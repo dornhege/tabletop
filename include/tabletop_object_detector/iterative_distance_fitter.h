@@ -39,7 +39,7 @@
 
 #include <tabletop_object_detector/model_fitter.h>
 #include <boost/function.hpp>
-
+#include <ros/ros.h>
 #include <opencv2/flann/flann.hpp>
 
 namespace tabletop_object_detector {
@@ -59,6 +59,7 @@ inline double huberKernel (double clipping, double x)
 class IterativeTranslationFitter : public DistanceFieldFitter
 {
  private:
+  double clipping_;
 
   //! Helper function for fitting
   cv::Point3f centerOfSupport(const std::vector<cv::Vec3f>& cloud) const;
@@ -73,7 +74,11 @@ class IterativeTranslationFitter : public DistanceFieldFitter
 
  public:
   //! Stub, just calls super's constructor
-  IterativeTranslationFitter() : DistanceFieldFitter() {}
+  IterativeTranslationFitter() : DistanceFieldFitter() {
+    ros::NodeHandle nhPriv("~");
+    nhPriv.param("clipping", clipping_, 0.0075);
+  }
+
   //! Empty stub
   ~IterativeTranslationFitter() {}
 

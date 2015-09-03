@@ -61,6 +61,7 @@
 #include <assimp/cimport.h>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <ros/ros.h>
 
 using object_recognition_core::common::PoseResult;
 
@@ -145,8 +146,7 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
       aiProcess_Triangulate |
       aiProcess_RemoveComponent |
       aiProcess_FlipUVs |
-      aiProcess_ValidateDataStructure |
-      aiProcess_MakeLeftHanded);
+      aiProcess_ValidateDataStructure);
       const aiNode* nd = scene->mRootNode;
 
       // Load the meshes and convert them to a shape_msgs::Mesh
@@ -236,8 +236,9 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
     {
       configure_impl();
 
-      perform_fit_merge_ = true;
-      confidence_cutoff_ = 0.85f;
+      ros::NodeHandle nhPriv("~");
+      nhPriv.param("confidence_cutoff", confidence_cutoff_, 0.85);
+      nhPriv.param("perform_fit_merge", perform_fit_merge_, true);
     }
 
     /** Compute the pose of the table plane
@@ -342,7 +343,7 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
     /** The coefficients of the tables */
     ecto::spore<std::vector<cv::Vec4f> > table_coefficients_;
     /** The number of models to fit to each cluster */
-    float confidence_cutoff_;
+    double confidence_cutoff_;
     bool perform_fit_merge_;
     ecto::spore<std::string> tabletop_object_ids_;
   /** map to convert from artificial household id to db id */

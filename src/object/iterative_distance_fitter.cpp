@@ -135,8 +135,7 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
   cv::Point3f vector;
   geometry_msgs::Pose pose;
 
-  const double clipping = 0.0075;
-  boost::function<double(double)> kernel = boost::bind(huberKernel, clipping, _1);
+  boost::function<double(double)> kernel = boost::bind(huberKernel, clipping_, _1);
   const int max_iterations = 100;
   int iter = 0;
   double score = 0;
