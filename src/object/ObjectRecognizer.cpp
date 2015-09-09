@@ -319,6 +319,29 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
 
         // Add the pose
         const geometry_msgs::Pose &pose = result.pose_;
+#if 1
+        Eigen::Affine3d objectPose;
+        tf::poseMsgToEigen(pose, objectPose);
+        Eigen::Affine3d tablePose = Eigen::Affine3d::Identity();
+        tf::poseMsgToEigen(cluster_poses[i], tablePose);
+
+        Eigen::Affine3d globalObjectPose = tablePose * objectPose;
+
+        cv::Vec3f T(globalObjectPose.translation().x(), globalObjectPose.translation().y(), globalObjectPose.translation().z());
+        pose_result.set_T(cv::Mat(T));
+        cv::Mat R = (cv::Mat_<float>(3, 3) << 
+                globalObjectPose.linear()(0, 0),
+                globalObjectPose.linear()(0, 1),
+                globalObjectPose.linear()(0, 2),
+                globalObjectPose.linear()(1, 0),
+                globalObjectPose.linear()(1, 1),
+                globalObjectPose.linear()(1, 2),
+                globalObjectPose.linear()(2, 0),
+                globalObjectPose.linear()(2, 1),
+                globalObjectPose.linear()(2, 2));
+        pose_result.set_R(R);
+#endif
+#if 0
         cv::Vec3f T(pose.position.x, pose.position.y, pose.position.z);
 
         Eigen::Quaternionf quat(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
@@ -329,6 +352,8 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
         pose_result.set_R(quat);
         cv::Mat R = cv::Mat(rotations[table_index] * pose_result.R<cv::Matx33f>());
         pose_result.set_R(R);
+#endif
+
         pose_result.set_confidence(result.confidence_);
 
         // Add the cluster of points
