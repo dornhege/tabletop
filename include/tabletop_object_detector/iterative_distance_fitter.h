@@ -72,6 +72,19 @@ class IterativeTranslationFitter : public DistanceFieldFitter
   double getModelFitScore(const std::vector<cv::Vec3f>& cloud, const cv::Point3f& location,
                           boost::function<double(double)> kernel, cv::flann::Index& search) const;
 
+  visualization_msgs::Marker createClusterMarker(const EigenSTL::vector_Vector3d & cluster, int id,
+        const geometry_msgs::Pose & cloud_pose, const Eigen::Affine3d & icp_transform) const;
+
+  double applyTransformAndcomputeScore(EigenSTL::vector_Vector3d & cloud,
+        const Eigen::Affine3d & transform,
+        boost::function<double(double)> distance_score_kernel) const;
+
+  Eigen::Matrix3d computeW(
+        const EigenSTL::vector_Vector3d & cloud, const Eigen::Vector3d & cloudMu,
+        const Eigen::Vector3d & distance_voxel_grid_Mu,
+        boost::function<double(double)> distance_score_kernel) const;
+
+
  public:
   //! Stub, just calls super's constructor
   IterativeTranslationFitter() : DistanceFieldFitter() {
@@ -84,7 +97,7 @@ class IterativeTranslationFitter : public DistanceFieldFitter
 
   //! Main fitting function
   ModelFitInfo fitPointCloud(const std::vector<cv::Vec3f>& cloud, cv::flann::Index &search,
-                             double min_object_score) const;
+                             double min_object_score, const geometry_msgs::Pose & cloud_pose) const;
 };
 
 } //namespace

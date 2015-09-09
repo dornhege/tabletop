@@ -62,6 +62,8 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 #include <ros/ros.h>
+#include <geometry_msgs/Pose.h>
+#include <eigen_conversions/eigen_msg.h>
 
 using object_recognition_core::common::PoseResult;
 
@@ -131,6 +133,10 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
       }
 
       household_id_to_db_id_[template_db_id] = document.get_field<std::string>("object_id");
+      if(household_id_to_db_id_[template_db_id] != "c33052bd56fa26ccf598f4839901eca3") {
+          std::cout << "Skipping model: " << document.id() << " for object id: " << household_id_to_db_id_[template_db_id] << std::endl;
+          continue;
+      }
 
       // Load the mesh through assimp
       std::cout << "Loading model: " << document.id() << " for object id: " << household_id_to_db_id_[template_db_id];
@@ -256,6 +262,8 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
       clusters_merged.reserve(100);
       std::vector<size_t> cluster_table;
       cluster_table.reserve(100);
+      std::vector<geometry_msgs::Pose> cluster_poses;
+      cluster_poses.reserve(100);
 
       std::vector<cv::Vec3f> translations(clusters_->size());
       std::vector<cv::Matx33f> rotations(clusters_->size());
@@ -268,6 +276,23 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
 
       BOOST_FOREACH(const std::vector<cv::Vec3f>& cluster, (*clusters_)[table_index]) {
         clusters_merged.resize(clusters_merged.size() + 1);
+        cluster_poses.resize(cluster_poses.size() + 1);
+        Eigen::Affine3d pose = Eigen::Affine3d::Identity();
+        pose.linear()(0, 0) = rotations[table_index](0, 0);
+        pose.linear()(0, 1) = rotations[table_index](0, 1);
+        pose.linear()(0, 2) = rotations[table_index](0, 2);
+        pose.linear()(1, 0) = rotations[table_index](1, 0);
+        pose.linear()(1, 1) = rotations[table_index](1, 1);
+        pose.linear()(1, 2) = rotations[table_index](1, 2);
+        pose.linear()(2, 0) = rotations[table_index](2, 0);
+        pose.linear()(2, 1) = rotations[table_index](2, 1);
+        pose.linear()(2, 2) = rotations[table_index](2, 2);
+        pose.translation()[0] = translations[table_index][0];
+        pose.translation()[1] = translations[table_index][1];
+        pose.translation()[2] = translations[table_index][2];
+        geometry_msgs::Pose poseMsg;
+        tf::poseEigenToMsg(pose, poseMsg);
+        cluster_poses.back() = poseMsg;
         for (size_t i = 0; i < cluster.size(); ++i) {
           cv::Vec3f res = Rinv * cluster[i] + Tinv;
           clusters_merged.back().push_back(cv::Vec3f(res[0], res[1], res[2]));
@@ -277,7 +302,7 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
     }
 
       // Find possible candidates
-      object_recognizer_.objectDetection(clusters_merged, confidence_cutoff_, perform_fit_merge_, results);
+      object_recognizer_.objectDetection(clusters_merged, confidence_cutoff_, perform_fit_merge_, results, cluster_poses);
 
       // Define the results
       pose_results_->clear();

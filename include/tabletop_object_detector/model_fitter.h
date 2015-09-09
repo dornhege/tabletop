@@ -145,9 +145,14 @@ class DistanceFieldFitter : public ModelToCloudFitter
   distance_field::PropagationDistanceField* distance_voxel_grid_;
   //! The resolution of the distance field
   double distance_field_resolution_;
+  //! Center of mass of the points the distance field was initialized with
+  /*! Not! the center of the distance field */
+  Eigen::Vector3d distance_field_points_center_of_mass_;
   //! Distances above this reported by the distance field will be truncated to this
   /*! Also used to decide how far beyond the object the distance field should extend */
   float truncate_value_;
+
+  shape_msgs::Mesh mesh_;
 
   //! Initialize the distance field from a set of vertices
   void initializeFromVector(const std::vector<cv::Point3f> &points);
@@ -162,6 +167,8 @@ class DistanceFieldFitter : public ModelToCloudFitter
   void initializeFromMesh(const shape_msgs::Mesh &mesh);
 
   std::vector<cv::Point3f> model_points_;
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };
 
 } //namespace tabletop_object_detector

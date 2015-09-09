@@ -116,14 +116,14 @@ class ExhaustiveFitDetector
     It always stores the list with at most \a numResults best fits, sorted by 
     their score. At the end, it returns this list.
   */
-  std::vector<ModelFitInfo> fitBestModels(const std::vector<cv::Vec3f>& cloud, int numResults, cv::flann::Index &search, double min_object_score)
+  std::vector<ModelFitInfo> fitBestModels(const std::vector<cv::Vec3f>& cloud, int numResults, cv::flann::Index &search, double min_object_score, const geometry_msgs::Pose & cloud_pose)
   {
     std::vector<ModelFitInfo> fit_results;
     if (numResults <= 0) return fit_results;
     
     for (size_t i=0; i<templates.size(); ++i) 
     {
-      ModelFitInfo current = templates[i]->fitPointCloud(cloud, search, min_object_score);
+      ModelFitInfo current = templates[i]->fitPointCloud(cloud, search, min_object_score, cloud_pose);
       // If the model that was matched is not in the exclusion list
       bool found = (model_exclusion_set_.find(current.getModelId()) != model_exclusion_set_.end());
       if (negate_exclusions_ == found)

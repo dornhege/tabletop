@@ -59,6 +59,8 @@ void DistanceFieldFitter::initializeFromVector(const std::vector<cv::Point3f> &p
   delete distance_voxel_grid_;
   distance_voxel_grid_ = NULL;
 
+  distance_field_points_center_of_mass_ = Eigen::Vector3d(0.0, 0.0, 0.0);
+
   if (points.size() == 0) {
     return;
   }
@@ -80,7 +82,10 @@ void DistanceFieldFitter::initializeFromVector(const std::vector<cv::Point3f> &p
       min.z = points[i].z;
     if (max.z < points[i].z)
       max.z = points[i].z;
+
+    distance_field_points_center_of_mass_ += Eigen::Vector3d(points[i].x, points[i].y, points[i].z);
   }
+  distance_field_points_center_of_mass_ /= points.size();
 
   //the distance field is initialized as follows: match the size of the object, but add
   //padding equal to the truncate_value_ on each side. Resolution is constant regardless 
@@ -229,6 +234,8 @@ void ModelToCloudFitter::sampleMesh(const shape_msgs::Mesh &mesh,
 
 void DistanceFieldFitter::initializeFromMesh(const shape_msgs::Mesh &mesh)
 {
+  mesh_ = mesh;
+
   std::vector<cv::Point3f> btVectors;
   model_points_.reserve(mesh.vertices.size());
   typedef std::vector<geometry_msgs::Point>::const_iterator I;
@@ -242,6 +249,5 @@ void DistanceFieldFitter::initializeFromMesh(const shape_msgs::Mesh &mesh)
   sampleMesh(mesh, btVectors,  1.5 * distance_field_resolution_ ); 
   initializeFromVector(btVectors);
 }
-
 
 } //namespace

@@ -44,6 +44,8 @@
 #include <string>
 
 #include <opencv2/flann/flann.hpp>
+#include <visualization_msgs/MarkerArray.h>
+#include <ros/ros.h>
 
 namespace tabletop_object_detector
 {
@@ -55,6 +57,7 @@ class TabletopObjectRecognizer
 
     //! The threshold for merging two models that were fit very close to each other
     double fit_merge_threshold_;
+    ros::Publisher pubMarker_;
 
     double getConfidence (double score) const
     {
@@ -67,6 +70,9 @@ class TabletopObjectRecognizer
       detector_ = ExhaustiveFitDetector<IterativeTranslationFitter>();
       //initialize operational flags
       fit_merge_threshold_ = 0.02;
+
+      ros::NodeHandle nh;
+      pubMarker_ = nh.advertise<visualization_msgs::MarkerArray>("object_detection_marker", 1);
     }
 
     //! Empty stub
@@ -96,11 +102,38 @@ class TabletopObjectRecognizer
       size_t cloud_index_;
     };
 
+    visualization_msgs::Marker createClusterMarker(const std::vector<cv::Vec3f> & cluster, int id)
+    {
+        visualization_msgs::Marker marker;
+        marker.header.frame_id = "head_mount_kinect_rgb_optical_frame"; // TODO figure this out, probably incoming msg frame, do we have that???
+        marker.ns = "clusters";
+        marker.id = id;
+        marker.type = visualization_msgs::Marker::POINTS;
+        marker.action = visualization_msgs::Marker::ADD;
+        marker.pose.orientation.w = 1.0;
+        marker.scale.x = 0.01;
+        marker.scale.y = 0.01;
+        marker.scale.z = 0.01;
+        marker.color.a = 1.0;
+        marker.color.r = 0.5 + 0.5 * drand48();
+        marker.color.g = 0.5 + 0.5 * drand48();
+        marker.color.b = 0.5 + 0.5 * drand48();
+        for(int i = 0; i < cluster.size(); i++) {
+            geometry_msgs::Point pt;
+            pt.x = cluster[i][0];
+            pt.y = cluster[i][1];
+            pt.z = cluster[i][2];
+            marker.points.push_back(pt);
+        }
+        return marker;
+    }
+
     /*! Performs the detection on each of the clusters, and populates the returned message.
      */
     void
     objectDetection(std::vector<std::vector<cv::Vec3f> > &clusters, float confidence_cutoff,
-                    bool perform_fit_merge, std::vector<TabletopResult > &results)
+                    bool perform_fit_merge, std::vector<TabletopResult > &results,
+                    const std::vector<geometry_msgs::Pose> & cluster_poses)
     {
       //do the model fitting part
       std::vector<size_t> cluster_model_indices;
@@ -108,14 +141,18 @@ class TabletopObjectRecognizer
       std::vector<cv::flann::Index> search(clusters.size());
       cluster_model_indices.resize(clusters.size(), -1);
       int num_models = 1;
+      visualization_msgs::MarkerArray ma;
       for (size_t i = 0; i < clusters.size(); i++)
       {
         cluster_model_indices[i] = i;
         cv::Mat features = cv::Mat(clusters[i]).reshape(1);
         search[i].build(features, cv::flann::KDTreeIndexParams());
 
-        raw_fit_results[i] = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], confidence_cutoff);
+        raw_fit_results[i] = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], confidence_cutoff, cluster_poses[i]);
+        ma.markers.push_back(createClusterMarker(clusters[i], i));
+        ma.markers.back().pose = cluster_poses[i];
       }
+      pubMarker_.publish(ma);
 
       //merge models that were fit very close to each other
       if (perform_fit_merge)
@@ -158,7 +195,7 @@ class TabletopObjectRecognizer
             //fits for cluster j now point at fit for cluster i
             cluster_model_indices[j] = i;
             //refit cluster i
-            raw_fit_results.at(i) = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], confidence_cutoff);
+            raw_fit_results.at(i) = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], confidence_cutoff, cluster_poses[i]);
           }
           else
           {
