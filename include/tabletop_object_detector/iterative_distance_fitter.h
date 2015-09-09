@@ -84,6 +84,9 @@ class IterativeTranslationFitter : public DistanceFieldFitter
         const Eigen::Vector3d & distance_voxel_grid_Mu,
         boost::function<double(double)> distance_score_kernel) const;
 
+  void computeMus(const EigenSTL::vector_Vector3d & cloud,
+          Eigen::Vector3d & cloudMu, Eigen::Vector3d & distance_voxel_grid_Mu,
+          boost::function<double(double)> distance_score_kernel) const;
 
  public:
   //! Stub, just calls super's constructor

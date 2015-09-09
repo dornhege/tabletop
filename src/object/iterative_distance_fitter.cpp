@@ -118,7 +118,7 @@ visualization_msgs::Marker IterativeTranslationFitter::createClusterMarker(const
         const geometry_msgs::Pose & cloud_pose, const Eigen::Affine3d & icp_transform) const
 {
     visualization_msgs::Marker marker;
-    if(id >= 42000) {
+    if(id >= 42000 && id != 12345) {
         id -= 42000;
         marker.ns = "icp_clusters_transformed";
         marker.color.g = 1.0;
@@ -152,7 +152,14 @@ visualization_msgs::Marker IterativeTranslationFitter::createClusterMarker(const
     marker.color.b = 0.5 + id%100/10.0;
     if(marker.color.b > 1.0)
         marker.color.b = 1.0;
-        return marker;
+    if(id == 12345) {
+        marker.color.r = 1.0;
+        marker.color.g = 1.0;
+        marker.color.b = 0.0;
+        marker.color.a = 0.8;
+        marker.ns = "final";
+    }
+    return marker;
 }
 
 /// Transform cloud by transform and compute a match score.
@@ -195,7 +202,46 @@ Eigen::Vector3d computeCenterOfMass(const EigenSTL::vector_Vector3d & cloud)
     return cloudMu;
 }
 
-// TODO if we throw out outliers here, they should also be handled in computeCenterOfMass!
+void IterativeTranslationFitter::computeMus(const EigenSTL::vector_Vector3d & cloud,
+        Eigen::Vector3d & cloudMu, Eigen::Vector3d & distance_voxel_grid_Mu,
+        boost::function<double(double)> distance_score_kernel) const
+{
+    cloudMu = Eigen::Vector3d(0.0, 0.0, 0.0);
+    distance_voxel_grid_Mu = Eigen::Vector3d(0.0, 0.0, 0.0);
+    double numCorrs = 0.0;
+    for(size_t i = 0; i < cloud.size(); i++) {
+        const Eigen::Vector3d & cloudPt = cloud[i];
+
+        // need to find the closest point 
+        int x, y, z;
+        double val = truncate_value_;
+        if(distance_voxel_grid_->worldToGrid(cloudPt.x(), cloudPt.y(), cloudPt.z(), x, y, z)) {
+            const distance_field::PropDistanceFieldVoxel& voxel = distance_voxel_grid_->getCell(x, y, z);
+            double cx, cy, cz;
+            if (voxel.closest_point_[0] != distance_field::PropDistanceFieldVoxel::UNINITIALIZED) {
+                distance_voxel_grid_->gridToWorld(voxel.closest_point_[0],
+                        voxel.closest_point_[1],
+                        voxel.closest_point_[2],
+                        cx, cy, cz);
+                Eigen::Vector3d modelPt(cx, cy, cz);    // grid point corresponce
+
+                val = distance_voxel_grid_->getDistance(x, y, z);
+                double weight = distance_score_kernel(val);
+                weight = 1.0; // TODO kernel handling everywhere
+
+                cloudMu += weight * cloudPt;
+                distance_voxel_grid_Mu += weight * modelPt;
+                numCorrs += weight;
+            }
+        }
+    }
+    printf("numCorrs %f\n", numCorrs);
+    if(numCorrs > 0.0) {
+        cloudMu /= numCorrs;
+        distance_voxel_grid_Mu /= numCorrs;
+    }
+}
+
 Eigen::Matrix3d IterativeTranslationFitter::computeW(
         const EigenSTL::vector_Vector3d & cloud, const Eigen::Vector3d & cloudMu,
         const Eigen::Vector3d & distance_voxel_grid_Mu,
@@ -216,16 +262,16 @@ Eigen::Matrix3d IterativeTranslationFitter::computeW(
                         voxel.closest_point_[1],
                         voxel.closest_point_[2],
                         cx, cy, cz);
-            }
-            Eigen::Vector3d modelPt(cx, cy, cz);    // grid point corresponce
-            modelPt -= distance_voxel_grid_Mu;;
-            Eigen::Vector3d cloudPtX = cloudPt - cloudMu;
+                Eigen::Vector3d modelPt(cx, cy, cz);    // grid point corresponce
+                modelPt -= distance_voxel_grid_Mu;;
+                Eigen::Vector3d cloudPtX = cloudPt - cloudMu;
 
-            val = distance_voxel_grid_->getDistance(x, y, z);
-            double weight = distance_score_kernel(val);
-            weight = (val < 0.01) ? 1 : 0;
-            //weight = 1.0;
-            W += weight * modelPt * cloudPtX.transpose();
+                val = distance_voxel_grid_->getDistance(x, y, z);
+                double weight = distance_score_kernel(val);
+                weight = (val < 0.01) ? 1 : 0;
+                //weight = 1.0;
+                W += weight * modelPt * cloudPtX.transpose();
+            }
         }
     }
     return W;
@@ -270,7 +316,7 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
   cv::Point3f center = centerOfSupport(cloud);
 
   //boost::function<double(double)> kernel = boost::bind(huberKernel, clipping_, _1);
-  boost::function<double(double)> kernel = boost::bind(huberKernel, 0.001, _1);
+  boost::function<double(double)> kernel = boost::bind(huberKernel, 0.002, _1);
   const int max_iterations = 1000;
   int iter = 0;
   double score = 0;
@@ -285,25 +331,26 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
   EigenSTL::vector_Vector3d rawCloud;
   transformedCloud.reserve(cloud.size());
   rawCloud.reserve(cloud.size());
-  // TODO use as initial guess
-  //transform.translation().x() = center.x;
-  //transform.translation().y() = center.y;
+  // use as initial guess
+  transform.translation().x() = center.x;
+  transform.translation().y() = center.y;
   for(size_t i = 0; i < cloud.size(); i++) {
       rawCloud.push_back(Eigen::Vector3d(
                   cloud[i][0], cloud[i][1], cloud[i][2]));
       transformedCloud.push_back(Eigen::Vector3d(
-                  cloud[i][0], cloud[i][1], cloud[i][2]));
+                  cloud[i][0] - center.x, cloud[i][1] - center.y, cloud[i][2]));
   }
 
   printf("fitPointCloud for model %d\n", model_id_);
 #if 1
   visualization_msgs::MarkerArray ma;
   int id = 0;
-  ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform.inverse()));
-  ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, transform));
+  ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform));
+  ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity()));
   do {
-    Eigen::Vector3d cloudMu = computeCenterOfMass(transformedCloud);
-    Eigen::Vector3d distance_voxel_grid_Mu = distance_field_points_center_of_mass_;
+    Eigen::Vector3d cloudMu;// = computeCenterOfMass(transformedCloud);
+    Eigen::Vector3d distance_voxel_grid_Mu;// = distance_field_points_center_of_mass_;
+    computeMus(transformedCloud, cloudMu, distance_voxel_grid_Mu, kernel);
 
     Eigen::Matrix3d W = computeW(transformedCloud, cloudMu, distance_voxel_grid_Mu, kernel);
 
@@ -311,15 +358,19 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
     Eigen::Affine3d localTrans = computeLocalTransform(W, cloudMu, distance_voxel_grid_Mu);
 
     // TODO make 2d ICP
+    // TODO final model score - match back?
+    // TODO kernels
 
     // For the computations distance_voxel_grid_ was the fixed "cloud", while the
     // cloud was transformed. As transform is the transformation to move the model/grid
     // to the cloud we apply the inverse
     Eigen::Affine3d newTransform = transform * localTrans.inverse();
+    // TODO maybe every X steps fix linear = rotation?
     transform = newTransform;
 
     double newScore = applyTransformAndcomputeScore(transformedCloud, localTrans, kernel);
-    if(iter < 10 || newScore > score + EPS)
+    // TODO change to: If > threshold
+    if(iter < 200 || newScore > score + EPS)
         score = newScore;
     else
         break;
@@ -327,11 +378,13 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
     geometry_msgs::Pose pose;
     tf::poseEigenToMsg(transform, pose);
     ROS_INFO_STREAM(pose);
-    printf("ICP score: %f\n", score);
+    printf("i: %d: ICP score: %f\n", iter, score);
 
     ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform));
     ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity()));
   } while (++iter < max_iterations);
+
+  ma.markers.push_back(createClusterMarker(rawCloud, 12345, cloud_pose, transform));
   pubMarker.publish(ma);
 #endif
 
@@ -355,6 +408,7 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
 
   geometry_msgs::Pose pose;
   tf::poseEigenToMsg(transform, pose);
+  ROS_INFO_STREAM("Final pose: " << pose);
   //pose.position.x = location.x;
   //pose.position.y = location.y;
   //pose.position.z = location.z;
