@@ -41,6 +41,8 @@
 #include <Eigen/SVD>
 #include <eigen_conversions/eigen_msg.h>
 #include <shape_tools/shape_to_marker.h>
+#include <pcl/point_types.h>
+#include <pcl/filters/voxel_grid.h>
 
 namespace tabletop_object_detector
 {
@@ -286,7 +288,6 @@ Eigen::Affine3d computeLocalTransform(const Eigen::Matrix3d & W, const Eigen::Ve
 }
 
 /* TODO
-   speed (downsample)
    final model score - match back?
    make icp/old/icp2d options -> Check reuse code for old of this -> new class
    make 2d ICP
@@ -295,6 +296,7 @@ Eigen::Affine3d computeLocalTransform(const Eigen::Matrix3d & W, const Eigen::Ve
    change break condition to: If > threshold
    incomding frames: figure this out, probably incoming msg frame, do we have that???
    Params for everything
+   sort out data types
    */
 
 double selectionKernel(double clip, double x)
@@ -339,6 +341,21 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
   double score = 0;
   const double EPS = 0.0;//01;
 
+
+  pcl::PointCloud<pcl::PointXYZ>::Ptr inputCloud(new pcl::PointCloud<pcl::PointXYZ>());
+  for(size_t i = 0; i < cloud.size(); i++) {
+      inputCloud->push_back(pcl::PointXYZ(
+                  cloud[i][0], cloud[i][1], cloud[i][2]));
+  }
+  pcl::PointCloud<pcl::PointXYZ> downsampledCloud;
+  // Downsample cloud
+  pcl::VoxelGrid<pcl::PointXYZ> vg;
+  vg.setInputCloud(inputCloud);
+  vg.setLeafSize(0.003, 0.003, 0.003);
+  vg.filter(downsampledCloud);
+
+  printf("INPUT: %zu down %zu\n", cloud.size(), downsampledCloud.size());
+
   // transform is the transformation to move the model/distance_voxel_grid to the input point cloud
   // i.e. the resulting pose of the model
   Eigen::Affine3d transform = Eigen::Affine3d::Identity();
@@ -346,16 +363,20 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
   // Thus, transformedCloud is transform^-1 * cloud
   EigenSTL::vector_Vector3d transformedCloud;
   EigenSTL::vector_Vector3d rawCloud;
-  transformedCloud.reserve(cloud.size());
-  rawCloud.reserve(cloud.size());
+  transformedCloud.reserve(downsampledCloud.size());
+  rawCloud.reserve(downsampledCloud.size());
   // use as initial guess
   transform.translation().x() = center.x;
   transform.translation().y() = center.y;
-  for(size_t i = 0; i < cloud.size(); i++) {
+  for(size_t i = 0; i < downsampledCloud.size(); i++) {
       rawCloud.push_back(Eigen::Vector3d(
-                  cloud[i][0], cloud[i][1], cloud[i][2]));
+                  downsampledCloud[i].x, downsampledCloud[i].y, downsampledCloud[i].z));
       transformedCloud.push_back(Eigen::Vector3d(
-                  cloud[i][0] - center.x, cloud[i][1] - center.y, cloud[i][2]));
+                  downsampledCloud[i].x - center.x, downsampledCloud[i].y - center.y, downsampledCloud[i].z));
+      //rawCloud.push_back(Eigen::Vector3d(
+      //            cloud[i][0], cloud[i][1], cloud[i][2]));
+      //transformedCloud.push_back(Eigen::Vector3d(
+      //            cloud[i][0] - center.x, cloud[i][1] - center.y, cloud[i][2]));
   }
 
   printf("fitPointCloud for model %d\n", model_id_);

@@ -27,11 +27,14 @@ FIND_PACKAGE(OpenGL)
   set(EXTRA_LIBRARIES)
 #endif()
 
+find_package(PCL 1.7 REQUIRED)
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
+
 include_directories(BEFORE ${ASSIMP_INCLUDE_DIRS})
 
-
-
 include_directories(SYSTEM ${catkin_INLUDE_DIRS})
+include_directories(${PCL_INCLUDE_DIRS})
 
 add_library(tabletop_model_fitter SHARED
     model_fitter.cpp
@@ -44,6 +47,7 @@ target_link_libraries(tabletop_model_fitter
     ${Boost_LIBRARIES}
     ${catkin_LIBRARIES}
     ${EXTRA_LIBRARIES}
+    ${PCL_LIBRARIES}
 )
 
 install(TARGETS tabletop_model_fitter
