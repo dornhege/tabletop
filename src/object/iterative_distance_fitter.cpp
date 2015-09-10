@@ -140,7 +140,7 @@ visualization_msgs::Marker IterativeTranslationFitter::createClusterMarker(const
         marker.ns = "icp_clusters";
         shape_tools::constructMarkerFromShape(mesh_, marker); // assumes this was initialized from mesh
     }
-    marker.header.frame_id = "head_mount_kinect_rgb_optical_frame"; // TODO figure this out, probably incoming msg frame, do we have that???
+    marker.header.frame_id = "head_mount_kinect_rgb_optical_frame";
     marker.id = id;
     marker.action = visualization_msgs::Marker::ADD;
     Eigen::Affine3d cloudPoseEigen;
@@ -204,7 +204,7 @@ Eigen::Vector3d computeCenterOfMass(const EigenSTL::vector_Vector3d & cloud)
 
 void IterativeTranslationFitter::computeMus(const EigenSTL::vector_Vector3d & cloud,
         Eigen::Vector3d & cloudMu, Eigen::Vector3d & distance_voxel_grid_Mu,
-        boost::function<double(double)> distance_score_kernel) const
+        boost::function<double(double)> distance_selection_kernel) const
 {
     cloudMu = Eigen::Vector3d(0.0, 0.0, 0.0);
     distance_voxel_grid_Mu = Eigen::Vector3d(0.0, 0.0, 0.0);
@@ -226,9 +226,7 @@ void IterativeTranslationFitter::computeMus(const EigenSTL::vector_Vector3d & cl
                 Eigen::Vector3d modelPt(cx, cy, cz);    // grid point corresponce
 
                 val = distance_voxel_grid_->getDistance(x, y, z);
-                double weight = distance_score_kernel(val);
-                weight = 1.0; // TODO kernel handling everywhere
-
+                double weight = distance_selection_kernel(val);
                 cloudMu += weight * cloudPt;
                 distance_voxel_grid_Mu += weight * modelPt;
                 numCorrs += weight;
@@ -245,7 +243,7 @@ void IterativeTranslationFitter::computeMus(const EigenSTL::vector_Vector3d & cl
 Eigen::Matrix3d IterativeTranslationFitter::computeW(
         const EigenSTL::vector_Vector3d & cloud, const Eigen::Vector3d & cloudMu,
         const Eigen::Vector3d & distance_voxel_grid_Mu,
-        boost::function<double(double)> distance_score_kernel) const
+        boost::function<double(double)> distance_selection_kernel) const
 {
     Eigen::Matrix3d W = Eigen::Matrix3d::Zero();
     for(size_t i = 0; i < cloud.size(); i++) {
@@ -267,9 +265,7 @@ Eigen::Matrix3d IterativeTranslationFitter::computeW(
                 Eigen::Vector3d cloudPtX = cloudPt - cloudMu;
 
                 val = distance_voxel_grid_->getDistance(x, y, z);
-                double weight = distance_score_kernel(val);
-                weight = (val < 0.01) ? 1 : 0;
-                //weight = 1.0;
+                double weight = distance_selection_kernel(val);
                 W += weight * modelPt * cloudPtX.transpose();
             }
         }
@@ -286,10 +282,27 @@ Eigen::Affine3d computeLocalTransform(const Eigen::Matrix3d & W, const Eigen::Ve
     Eigen::Affine3d localTrans = Eigen::Affine3d::Identity();
     localTrans.linear() = R;
     localTrans.translation() = t;
-    //localTrans.translation().z() = 0.0;
     return localTrans;
 }
 
+/* TODO
+   speed (downsample)
+   final model score - match back?
+   make icp/old/icp2d options -> Check reuse code for old of this -> new class
+   make 2d ICP
+
+   maybe every X steps fix linear = rotation?
+   change break condition to: If > threshold
+   incomding frames: figure this out, probably incoming msg frame, do we have that???
+   Params for everything
+   */
+
+double selectionKernel(double clip, double x)
+{
+    if(x <= clip)
+        return 1.0;
+    return 0.0;
+}
 
 /*! Iterates over the inner loop of \a getFitScoreAndGradient, then moves in the direction
  *  of the computed gradient. Does this until the score stops decreasing.
@@ -316,7 +329,11 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
   cv::Point3f center = centerOfSupport(cloud);
 
   //boost::function<double(double)> kernel = boost::bind(huberKernel, clipping_, _1);
-  boost::function<double(double)> kernel = boost::bind(huberKernel, 0.002, _1);
+  boost::function<double(double)> huber_kernel = boost::bind(huberKernel, 0.002, _1);
+  boost::function<double(double)> inlier_kernel = boost::bind(selectionKernel, 0.005, _1);
+  boost::function<double(double)> outlier_kernel = boost::bind(selectionKernel, 0.02, _1);
+  inlier_kernel = huber_kernel;
+
   const int max_iterations = 1000;
   int iter = 0;
   double score = 0;
@@ -350,26 +367,20 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
   do {
     Eigen::Vector3d cloudMu;// = computeCenterOfMass(transformedCloud);
     Eigen::Vector3d distance_voxel_grid_Mu;// = distance_field_points_center_of_mass_;
-    computeMus(transformedCloud, cloudMu, distance_voxel_grid_Mu, kernel);
+    computeMus(transformedCloud, cloudMu, distance_voxel_grid_Mu, outlier_kernel);
 
-    Eigen::Matrix3d W = computeW(transformedCloud, cloudMu, distance_voxel_grid_Mu, kernel);
+    Eigen::Matrix3d W = computeW(transformedCloud, cloudMu, distance_voxel_grid_Mu, outlier_kernel);
 
     // localTrans is the transform that transforms the cloud towards the distance_voxel_grid_
     Eigen::Affine3d localTrans = computeLocalTransform(W, cloudMu, distance_voxel_grid_Mu);
-
-    // TODO make 2d ICP
-    // TODO final model score - match back?
-    // TODO kernels
 
     // For the computations distance_voxel_grid_ was the fixed "cloud", while the
     // cloud was transformed. As transform is the transformation to move the model/grid
     // to the cloud we apply the inverse
     Eigen::Affine3d newTransform = transform * localTrans.inverse();
-    // TODO maybe every X steps fix linear = rotation?
     transform = newTransform;
 
-    double newScore = applyTransformAndcomputeScore(transformedCloud, localTrans, kernel);
-    // TODO change to: If > threshold
+    double newScore = applyTransformAndcomputeScore(transformedCloud, localTrans, inlier_kernel);
     if(iter < 200 || newScore > score + EPS)
         score = newScore;
     else
