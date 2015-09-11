@@ -247,6 +247,24 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
       nhPriv.param("perform_fit_merge", perform_fit_merge_, true);
     }
 
+    Eigen::Affine3d poseCvToEigen(const cv::Vec3f & translation, const cv::Matx33f & rotation)
+    {
+        Eigen::Affine3d pose = Eigen::Affine3d::Identity();
+        pose.linear()(0, 0) = rotation(0, 0);
+        pose.linear()(0, 1) = rotation(0, 1);
+        pose.linear()(0, 2) = rotation(0, 2);
+        pose.linear()(1, 0) = rotation(1, 0);
+        pose.linear()(1, 1) = rotation(1, 1);
+        pose.linear()(1, 2) = rotation(1, 2);
+        pose.linear()(2, 0) = rotation(2, 0);
+        pose.linear()(2, 1) = rotation(2, 1);
+        pose.linear()(2, 2) = rotation(2, 2);
+        pose.translation()[0] = translation[0];
+        pose.translation()[1] = translation[1];
+        pose.translation()[2] = translation[2];
+        return pose;
+    }
+
     /** Compute the pose of the table plane
      * @param inputs
      * @param outputs
@@ -277,20 +295,8 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
       BOOST_FOREACH(const std::vector<cv::Vec3f>& cluster, (*clusters_)[table_index]) {
         clusters_merged.resize(clusters_merged.size() + 1);
         cluster_poses.resize(cluster_poses.size() + 1);
-        Eigen::Affine3d pose = Eigen::Affine3d::Identity();
-        pose.linear()(0, 0) = rotations[table_index](0, 0);
-        pose.linear()(0, 1) = rotations[table_index](0, 1);
-        pose.linear()(0, 2) = rotations[table_index](0, 2);
-        pose.linear()(1, 0) = rotations[table_index](1, 0);
-        pose.linear()(1, 1) = rotations[table_index](1, 1);
-        pose.linear()(1, 2) = rotations[table_index](1, 2);
-        pose.linear()(2, 0) = rotations[table_index](2, 0);
-        pose.linear()(2, 1) = rotations[table_index](2, 1);
-        pose.linear()(2, 2) = rotations[table_index](2, 2);
-        pose.translation()[0] = translations[table_index][0];
-        pose.translation()[1] = translations[table_index][1];
-        pose.translation()[2] = translations[table_index][2];
         geometry_msgs::Pose poseMsg;
+        Eigen::Affine3d pose = poseCvToEigen(translations[table_index], rotations[table_index]);
         tf::poseEigenToMsg(pose, poseMsg);
         cluster_poses.back() = poseMsg;
         for (size_t i = 0; i < cluster.size(); ++i) {
@@ -302,7 +308,7 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
     }
 
       // Find possible candidates
-      object_recognizer_.objectDetection(clusters_merged, confidence_cutoff_, perform_fit_merge_, results, cluster_poses);
+      object_recognizer_.objectDetection(clusters_merged, cluster_poses, confidence_cutoff_, perform_fit_merge_, results);
 
       // Define the results
       pose_results_->clear();
@@ -319,7 +325,6 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
 
         // Add the pose
         const geometry_msgs::Pose &pose = result.pose_;
-#if 1
         Eigen::Affine3d objectPose;
         tf::poseMsgToEigen(pose, objectPose);
         Eigen::Affine3d tablePose = Eigen::Affine3d::Identity();
@@ -340,19 +345,6 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
                 globalObjectPose.linear()(2, 1),
                 globalObjectPose.linear()(2, 2));
         pose_result.set_R(R);
-#endif
-#if 0
-        cv::Vec3f T(pose.position.x, pose.position.y, pose.position.z);
-
-        Eigen::Quaternionf quat(pose.orientation.w, pose.orientation.x, pose.orientation.y, pose.orientation.z);
-
-        cv::Vec3f new_T = rotations[table_index] * T + translations[table_index];
-        pose_result.set_T(cv::Mat(new_T));
-
-        pose_result.set_R(quat);
-        cv::Mat R = cv::Mat(rotations[table_index] * pose_result.R<cv::Matx33f>());
-        pose_result.set_R(R);
-#endif
 
         pose_result.set_confidence(result.confidence_);
 

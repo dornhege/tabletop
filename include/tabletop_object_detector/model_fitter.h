@@ -131,8 +131,8 @@ class ModelToCloudFitter
   virtual void initializeFromMesh(const shape_msgs::Mesh &mesh) = 0;
 
   //! The main fitting function
-  virtual ModelFitInfo fitPointCloud(const std::vector<cv::Vec3f>& cloud,
-          cv::flann::Index &search, double min_object_score, const geometry_msgs::Pose & cloud_pose) const = 0;
+  virtual ModelFitInfo fitPointCloud(const std::vector<cv::Vec3f>& cloud, const geometry_msgs::Pose & cloud_pose,
+          cv::flann::Index &search, double min_object_score) const = 0;
 };
 
 //! An individual fitter equipped with a distance field stored as a voxel grid

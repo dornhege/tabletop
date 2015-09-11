@@ -34,8 +34,8 @@
 
 // Author(s): Marius Muja, Matei Ciocarlie and Romain Thibaux
 
-#ifndef _ITERATIVE_DISTANCE_FITTER_H_
-#define _ITERATIVE_DISTANCE_FITTER_H_
+#ifndef _ICP_FITTER_H_
+#define _ICP_FITTER_H_
 
 #include <tabletop_object_detector/model_fitter.h>
 #include <boost/function.hpp>
@@ -47,7 +47,7 @@ namespace tabletop_object_detector {
 // use M-kernel to weight inliers and suppress the influence of outliers from linear to just constant ->
 // 1) more robust ICP (not too sensitive to outliers)
 // 2) score = inliers, but as a floating point value -> no cut off threshold -> smooth -> can better distinguish between similar poses.
-inline double huberKernel (double clipping, double x)
+inline double huberKernelX (double clipping, double x)
 {
   if (x < clipping)
     return 1.0;
@@ -55,32 +55,57 @@ inline double huberKernel (double clipping, double x)
     return (clipping / x);
 }
 
-//! Does an ICP-like fitting only in the X and Y translation DOFs
-class IterativeTranslationFitter : public DistanceFieldFitter
+//! Does an ICP fitting
+class IcpFitter : public DistanceFieldFitter
 {
  private:
   double clipping_;
+  ros::Publisher pubMarker;
 
   //! Helper function for fitting
   cv::Point3f centerOfSupport(const std::vector<cv::Vec3f>& cloud) const;
+
+  Eigen::Affine3d computeLocalTransform(const Eigen::Matrix3d & W, const Eigen::Vector3d cloudMu,
+          const Eigen::Vector3d distance_voxel_grid_Mu) const;
 
   //! Inner loop when doing translation fitting
   double getFitScoreAndGradient(const std::vector<cv::Vec3f>& cloud,
                                 const cv::Point3f& location, cv::Point3f& vector,
                                 boost::function<double(double)> kernel) const;
 
-  double getModelFitScore(const std::vector<cv::Vec3f>& cloud, const cv::Point3f& location,
-                          boost::function<double(double)> kernel, cv::flann::Index& search) const;
+  double getModelFitScore(const std::vector<cv::Vec3f>& cloud, const Eigen::Affine3d & pose,
+                          boost::function<double(double)> kernel, cv::flann::Index& search,
+                          const geometry_msgs::Pose & cloud_pose) const;
+
+  visualization_msgs::Marker createClusterMarker(const EigenSTL::vector_Vector3d & cluster, int id,
+        const geometry_msgs::Pose & cloud_pose, const Eigen::Affine3d & icp_transform,
+        const std::string & ns) const;
+
+  double applyTransformAndcomputeScore(EigenSTL::vector_Vector3d & cloud,
+        const Eigen::Affine3d & transform,
+        boost::function<double(double)> distance_score_kernel) const;
+
+  Eigen::Matrix3d computeW(
+        const EigenSTL::vector_Vector3d & cloud, const Eigen::Vector3d & cloudMu,
+        const Eigen::Vector3d & distance_voxel_grid_Mu,
+        boost::function<double(double)> distance_selection_kernel) const;
+
+  void computeMus(const EigenSTL::vector_Vector3d & cloud,
+          Eigen::Vector3d & cloudMu, Eigen::Vector3d & distance_voxel_grid_Mu,
+         boost::function<double(double)> distance_selection_kernel) const;
 
  public:
   //! Stub, just calls super's constructor
-  IterativeTranslationFitter() : DistanceFieldFitter() {
+  IcpFitter() : DistanceFieldFitter() {
     ros::NodeHandle nhPriv("~");
     nhPriv.param("clipping", clipping_, 0.0075);
+
+    ros::NodeHandle nh;
+    pubMarker = nh.advertise<visualization_msgs::MarkerArray>("object_detection_marker", 10);
   }
 
   //! Empty stub
-  ~IterativeTranslationFitter() {}
+  ~IcpFitter() {}
 
   //! Main fitting function
   ModelFitInfo fitPointCloud(const std::vector<cv::Vec3f>& cloud, const geometry_msgs::Pose & cloud_pose,

@@ -40,6 +40,7 @@
 
 #include <tabletop_object_detector/exhaustive_fit_detector.h>
 #include <tabletop_object_detector/iterative_distance_fitter.h>
+#include <tabletop_object_detector/icp_fitter.h>
 
 #include <string>
 
@@ -58,6 +59,7 @@ class TabletopObjectRecognizer
     //! The threshold for merging two models that were fit very close to each other
     double fit_merge_threshold_;
     ros::Publisher pubMarker_;
+    std::string fitter_type_;
 
     double getConfidence (double score) const
     {
@@ -77,6 +79,9 @@ class TabletopObjectRecognizer
 
       ros::NodeHandle nh;
       pubMarker_ = nh.advertise<visualization_msgs::MarkerArray>("object_detection_marker", 1);
+
+      ros::NodeHandle nhPriv("~");
+      nhPriv.param("fitter_type", fitter_type_, std::string("iterative_translation"));
     }
 
     //! Empty stub
@@ -93,7 +98,12 @@ class TabletopObjectRecognizer
     void
     addObject(int model_id, const shape_msgs::Mesh & mesh)
     {
-      detector_.addObject<IterativeTranslationFitter>(model_id, mesh);
+        if(fitter_type_ == "iterative_translation")
+            detector_.addObject<IterativeTranslationFitter>(model_id, mesh);
+        else if(fitter_type_ == "icp")
+            detector_.addObject<IcpFitter>(model_id, mesh);
+        else
+            ROS_WARN("%s: Unknown fitter type: %s", __PRETTY_FUNCTION__, fitter_type_.c_str());
     }
 
     /** Structure used a return type for objectDetection */
@@ -106,7 +116,8 @@ class TabletopObjectRecognizer
       size_t cloud_index_;
     };
 
-    visualization_msgs::Marker createClusterMarker(const std::vector<cv::Vec3f> & cluster, int id)
+    visualization_msgs::Marker createClusterMarker(const std::vector<cv::Vec3f> & cluster, int id,
+            const geometry_msgs::Pose & cluster_pose)
     {
         visualization_msgs::Marker marker;
         marker.header.frame_id = "head_mount_kinect_rgb_optical_frame"; // TODO figure this out, probably incoming msg frame, do we have that???
@@ -114,7 +125,7 @@ class TabletopObjectRecognizer
         marker.id = id;
         marker.type = visualization_msgs::Marker::POINTS;
         marker.action = visualization_msgs::Marker::ADD;
-        marker.pose.orientation.w = 1.0;
+        marker.pose = cluster_pose;
         marker.scale.x = 0.01;
         marker.scale.y = 0.01;
         marker.scale.z = 0.01;
@@ -135,9 +146,10 @@ class TabletopObjectRecognizer
     /*! Performs the detection on each of the clusters, and populates the returned message.
      */
     void
-    objectDetection(std::vector<std::vector<cv::Vec3f> > &clusters, float confidence_cutoff,
-                    bool perform_fit_merge, std::vector<TabletopResult > &results,
-                    const std::vector<geometry_msgs::Pose> & cluster_poses)
+    objectDetection(std::vector<std::vector<cv::Vec3f> > &clusters,
+            const std::vector<geometry_msgs::Pose> & cluster_poses,
+            float confidence_cutoff,
+            bool perform_fit_merge, std::vector<TabletopResult > &results)
     {
       //do the model fitting part
       std::vector<size_t> cluster_model_indices;
@@ -152,9 +164,9 @@ class TabletopObjectRecognizer
         cv::Mat features = cv::Mat(clusters[i]).reshape(1);
         search[i].build(features, cv::flann::KDTreeIndexParams());
 
-        raw_fit_results[i] = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], getScore(confidence_cutoff), cluster_poses[i]);
-        ma.markers.push_back(createClusterMarker(clusters[i], i));
-        ma.markers.back().pose = cluster_poses[i];
+        raw_fit_results[i] = detector_.fitBestModels(clusters[i], cluster_poses[i],
+                std::max(1, num_models), search[i], getScore(confidence_cutoff));
+        ma.markers.push_back(createClusterMarker(clusters[i], i, cluster_poses[i]));
       }
       pubMarker_.publish(ma);
 
@@ -199,7 +211,8 @@ class TabletopObjectRecognizer
             //fits for cluster j now point at fit for cluster i
             cluster_model_indices[j] = i;
             //refit cluster i
-            raw_fit_results.at(i) = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], getScore(confidence_cutoff), cluster_poses[i]);
+            raw_fit_results.at(i) = detector_.fitBestModels(clusters[i], cluster_poses[i],
+                    std::max(1, num_models), search[i], getScore(confidence_cutoff));
           }
           else
           {

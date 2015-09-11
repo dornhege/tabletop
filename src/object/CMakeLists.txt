@@ -39,6 +39,7 @@ include_directories(${PCL_INCLUDE_DIRS})
 add_library(tabletop_model_fitter SHARED
     model_fitter.cpp
     iterative_distance_fitter.cpp
+    icp_fitter.cpp
     ${EXTRA_SOURCES}
 )
 
