@@ -60,6 +60,7 @@ class IterativeTranslationFitter : public DistanceFieldFitter
 {
  private:
   double clipping_;
+  ros::Publisher pubMarker;
 
   //! Helper function for fitting
   cv::Point3f centerOfSupport(const std::vector<cv::Vec3f>& cloud) const;
@@ -69,11 +70,13 @@ class IterativeTranslationFitter : public DistanceFieldFitter
                                 const cv::Point3f& location, cv::Point3f& vector,
                                 boost::function<double(double)> kernel) const;
 
-  double getModelFitScore(const std::vector<cv::Vec3f>& cloud, const cv::Point3f& location,
-                          boost::function<double(double)> kernel, cv::flann::Index& search) const;
+  double getModelFitScore(const std::vector<cv::Vec3f>& cloud, const Eigen::Affine3d & pose,
+                          boost::function<double(double)> kernel, cv::flann::Index& search,
+                          const geometry_msgs::Pose & cloud_pose) const;
 
   visualization_msgs::Marker createClusterMarker(const EigenSTL::vector_Vector3d & cluster, int id,
-        const geometry_msgs::Pose & cloud_pose, const Eigen::Affine3d & icp_transform) const;
+        const geometry_msgs::Pose & cloud_pose, const Eigen::Affine3d & icp_transform,
+        const std::string & ns) const;
 
   double applyTransformAndcomputeScore(EigenSTL::vector_Vector3d & cloud,
         const Eigen::Affine3d & transform,
@@ -93,6 +96,9 @@ class IterativeTranslationFitter : public DistanceFieldFitter
   IterativeTranslationFitter() : DistanceFieldFitter() {
     ros::NodeHandle nhPriv("~");
     nhPriv.param("clipping", clipping_, 0.0075);
+
+    ros::NodeHandle nh;
+    pubMarker = nh.advertise<visualization_msgs::MarkerArray>("object_detection_marker", 10);
   }
 
   //! Empty stub

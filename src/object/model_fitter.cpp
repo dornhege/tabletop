@@ -56,6 +56,9 @@ DistanceFieldFitter::~DistanceFieldFitter()
 
 void DistanceFieldFitter::initializeFromVector(const std::vector<cv::Point3f> &points)
 {
+  if(model_surface_points_.empty())
+      model_surface_points_ = points;
+
   delete distance_voxel_grid_;
   distance_voxel_grid_ = NULL;
 
@@ -236,18 +239,13 @@ void DistanceFieldFitter::initializeFromMesh(const shape_msgs::Mesh &mesh)
 {
   mesh_ = mesh;
 
-  std::vector<cv::Point3f> btVectors;
-  model_points_.reserve(mesh.vertices.size());
-  typedef std::vector<geometry_msgs::Point>::const_iterator I;
-  for (I i = mesh.vertices.begin(); i != mesh.vertices.end(); i++)
-    model_points_.push_back(cv::Point3f(i->x,i->y,i->z));
   // 20mm resolution
-  //sampleMesh(mesh, model_points_, 0.02 );
+  //sampleMesh(mesh, model_surface_points_, 0.02 );
 
   //we use a slightly larger resolution than the distance field, in an attempt to bring
   //down pre-computation time
-  sampleMesh(mesh, btVectors,  1.5 * distance_field_resolution_ ); 
-  initializeFromVector(btVectors);
+  sampleMesh(mesh, model_surface_points_,  1.5 * distance_field_resolution_ ); 
+  initializeFromVector(model_surface_points_);
 }
 
 } //namespace

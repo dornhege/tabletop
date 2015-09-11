@@ -63,6 +63,10 @@ class TabletopObjectRecognizer
     {
       return (1.0 - (1.0 - score) * (1.0 - score));
     }
+    double getScore(double confidence) const
+    {
+        return 1.0 - sqrt(1 - confidence);
+    }
   public:
     //! Subscribes to and advertises topics; initializes fitter
     TabletopObjectRecognizer()
@@ -148,7 +152,7 @@ class TabletopObjectRecognizer
         cv::Mat features = cv::Mat(clusters[i]).reshape(1);
         search[i].build(features, cv::flann::KDTreeIndexParams());
 
-        raw_fit_results[i] = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], confidence_cutoff, cluster_poses[i]);
+        raw_fit_results[i] = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], getScore(confidence_cutoff), cluster_poses[i]);
         ma.markers.push_back(createClusterMarker(clusters[i], i));
         ma.markers.back().pose = cluster_poses[i];
       }
@@ -195,7 +199,7 @@ class TabletopObjectRecognizer
             //fits for cluster j now point at fit for cluster i
             cluster_model_indices[j] = i;
             //refit cluster i
-            raw_fit_results.at(i) = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], confidence_cutoff, cluster_poses[i]);
+            raw_fit_results.at(i) = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], getScore(confidence_cutoff), cluster_poses[i]);
           }
           else
           {

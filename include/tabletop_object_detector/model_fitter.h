@@ -166,7 +166,7 @@ class DistanceFieldFitter : public ModelToCloudFitter
   //! Calls initialize from points on the vertices of the mesh
   void initializeFromMesh(const shape_msgs::Mesh &mesh);
 
-  std::vector<cv::Point3f> model_points_;
+  std::vector<cv::Point3f> model_surface_points_;
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 };

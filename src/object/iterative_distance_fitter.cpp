@@ -117,12 +117,12 @@ double IterativeTranslationFitter::getFitScoreAndGradient(const std::vector<cv::
 
 
 visualization_msgs::Marker IterativeTranslationFitter::createClusterMarker(const EigenSTL::vector_Vector3d & cluster, int id,
-        const geometry_msgs::Pose & cloud_pose, const Eigen::Affine3d & icp_transform) const
+        const geometry_msgs::Pose & cloud_pose, const Eigen::Affine3d & icp_transform,
+        const std::string & ns) const
 {
     visualization_msgs::Marker marker;
-    if(id >= 42000 && id != 12345) {
+    if(id >= 42000 && id != 12345 || id == 12346) {
         id -= 42000;
-        marker.ns = "icp_clusters_transformed";
         marker.color.g = 1.0;
         marker.type = visualization_msgs::Marker::POINTS;
         for(int i = 0; i < cluster.size(); i++) {
@@ -139,11 +139,11 @@ visualization_msgs::Marker IterativeTranslationFitter::createClusterMarker(const
         marker.scale.x = 1.0;
         marker.scale.y = 1.0;
         marker.scale.z = 1.0;
-        marker.ns = "icp_clusters";
         shape_tools::constructMarkerFromShape(mesh_, marker); // assumes this was initialized from mesh
     }
     marker.header.frame_id = "head_mount_kinect_rgb_optical_frame";
     marker.id = id;
+    marker.ns = ns;
     marker.action = visualization_msgs::Marker::ADD;
     Eigen::Affine3d cloudPoseEigen;
     tf::poseMsgToEigen(cloud_pose, cloudPoseEigen);
@@ -159,7 +159,12 @@ visualization_msgs::Marker IterativeTranslationFitter::createClusterMarker(const
         marker.color.g = 1.0;
         marker.color.b = 0.0;
         marker.color.a = 0.8;
-        marker.ns = "final";
+    }
+    if(id == 12346) {
+        marker.color.r = 1.0;
+        marker.color.g = 0.0;
+        marker.color.b = 1.0;
+        marker.color.a = 0.8;
     }
     return marker;
 }
@@ -288,9 +293,10 @@ Eigen::Affine3d computeLocalTransform(const Eigen::Matrix3d & W, const Eigen::Ve
 }
 
 /* TODO
-   final model score - match back?
+   final model score - match back? --> cleanup  and fix.
    make icp/old/icp2d options -> Check reuse code for old of this -> new class
    make 2d ICP
+   try 45 deg as second initial guess to prevent 90 deg flipping
 
    maybe every X steps fix linear = rotation?
    change break condition to: If > threshold
@@ -324,15 +330,13 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
     geometry_msgs::Pose bogus_pose;
     return ModelFitInfo(model_id_, bogus_pose, 0.0);
   }
-  static ros::NodeHandle nh;
-  static ros::Publisher pubMarker = nh.advertise<visualization_msgs::MarkerArray>("object_detection_marker", 4);
 
   // compute center of point cloud
   cv::Point3f center = centerOfSupport(cloud);
 
   //boost::function<double(double)> kernel = boost::bind(huberKernel, clipping_, _1);
   boost::function<double(double)> huber_kernel = boost::bind(huberKernel, 0.002, _1);
-  boost::function<double(double)> inlier_kernel = boost::bind(selectionKernel, 0.005, _1);
+  boost::function<double(double)> inlier_kernel = boost::bind(selectionKernel, 0.0075, _1);
   boost::function<double(double)> outlier_kernel = boost::bind(selectionKernel, 0.02, _1);
   inlier_kernel = huber_kernel;
 
@@ -383,8 +387,8 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
 #if 1
   visualization_msgs::MarkerArray ma;
   int id = 0;
-  ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform));
-  ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity()));
+  ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform, "icp"));
+  ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity(), "icp_transformed"));
   do {
     Eigen::Vector3d cloudMu;// = computeCenterOfMass(transformedCloud);
     Eigen::Vector3d distance_voxel_grid_Mu;// = distance_field_points_center_of_mass_;
@@ -412,11 +416,11 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
     ROS_INFO_STREAM(pose);
     printf("i: %d: ICP score: %f\n", iter, score);
 
-    ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform));
-    ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity()));
+    ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform, "icp"));
+    ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity(), "icp_transformed"));
   } while (++iter < max_iterations);
 
-  ma.markers.push_back(createClusterMarker(rawCloud, 12345, cloud_pose, transform));
+  ma.markers.push_back(createClusterMarker(rawCloud, 12345, cloud_pose, transform, "final"));
   pubMarker.publish(ma);
 #endif
 
@@ -451,33 +455,44 @@ ModelFitInfo IterativeTranslationFitter::fitPointCloud(const std::vector<cv::Vec
 
   // evaluating the model score is cost-intensive and since the model_score <= 1 ->
   // if score already below min_object_score, then set to 0 and stop further evaluation!
-  //if (score > min_object_score) {
-  //  //double model_score = getModelFitScore(cloud, location, kernel, search);
-  //  //// since for waterthight model only 50% of the points are visible at max, we weight the model_score only half.
-  //  //score *= sqrt(model_score);
-  //} else
-  //  score = 0;
+  if (score > min_object_score) {
+    double model_score = getModelFitScore(cloud, transform, inlier_kernel, search, cloud_pose);
+    //// since for waterthight model only 50% of the points are visible at max, we weight the model_score only half.
+    score *= sqrt(model_score);
+    printf("model_score: %f final score: %f\n", model_score, score);
+  } else
+      score = 0;
+
 
   return ModelFitInfo(model_id_, pose, score);
 }
 
-double IterativeTranslationFitter::getModelFitScore(const std::vector<cv::Vec3f>& cloud, const cv::Point3f& position,
+double IterativeTranslationFitter::getModelFitScore(const std::vector<cv::Vec3f>& cloud,
+        const Eigen::Affine3d & pose,
     boost::function<double(double)> kernel,
-    cv::flann::Index &search) const
+    cv::flann::Index &search, const geometry_msgs::Pose & cloud_pose) const
 {
   double inlier_count = 0;
   std::vector<int> indices(1);
   std::vector<float> distances(1);
   cv::Mat_<float> points(1, 3);
-  for (std::vector<cv::Point3f>::const_iterator mIt = model_points_.begin(); mIt != model_points_.end(); ++mIt) {
-    points(0, 0) = mIt->x + position.x;
-    points(0, 1) = mIt->y + position.y;
-    points(0, 2) = mIt->z + position.z;
+  EigenSTL::vector_Vector3d model_cloud;
+  printf("model_surface_points_: %zu\n", model_surface_points_.size());
+  for (std::vector<cv::Point3f>::const_iterator mIt = model_surface_points_.begin(); mIt != model_surface_points_.end(); ++mIt) {
+      Eigen::Vector3d pt(mIt->x, mIt->y, mIt->z);
+      Eigen::Vector3d transformedPoint = pose * pt;
+      model_cloud.push_back(transformedPoint);
+    points(0, 0) = transformedPoint.x(); //mIt->x + position.x;
+    points(0, 1) = transformedPoint.y(); //mIt->y + position.y;
+    points(0, 2) = transformedPoint.z(); //mIt->z + position.z;
 
     search.knnSearch(points, indices, distances, 1);
     inlier_count += kernel(sqrt(distances[0]));
   }
-  return inlier_count / model_points_.size();
+  visualization_msgs::MarkerArray ma;
+  ma.markers.push_back(createClusterMarker(model_cloud, 12346, cloud_pose, Eigen::Affine3d::Identity(), "model_fit_cloud"));
+  pubMarker.publish(ma);
+  return inlier_count / model_surface_points_.size();
 }
 
 } //namespace
