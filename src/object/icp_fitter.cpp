@@ -181,7 +181,6 @@ void IcpFitter::computeMus(const EigenSTL::vector_Vector3d & cloud,
             }
         }
     }
-    printf("numCorrs %f\n", numCorrs);
     if(numCorrs > 0.0) {
         cloudMu /= numCorrs;
         distance_voxel_grid_Mu /= numCorrs;
@@ -238,10 +237,9 @@ Eigen::Affine3d IcpFitter::computeLocalTransform(const Eigen::Matrix3d & W, cons
    try 45 deg as second initial guess to prevent 90 deg flipping
 
    maybe every X steps fix linear = rotation?
-   change break condition to: If > threshold
-   incomding frames: figure this out, probably incoming msg frame, do we have that???
    Params for everything
    sort out data types
+   incoming frames: figure this out, probably incoming msg frame, do we have that???
    cleanup vis code
    */
 
@@ -269,11 +267,6 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   boost::function<double(double)> inlier_kernel = boost::bind(selectionKernel, 0.0075, _1);
   boost::function<double(double)> outlier_kernel = boost::bind(selectionKernel, 0.02, _1);
   inlier_kernel = huber_kernel;
-
-  const int max_iterations = 1000;
-  int iter = 0;
-  double score = 0;
-  const double EPS = 0.0;//01;
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr inputCloud(new pcl::PointCloud<pcl::PointXYZ>());
   for(size_t i = 0; i < cloud.size(); i++) {
@@ -310,8 +303,13 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   }
 
   printf("fitPointCloud for model %d\n", model_id_);
-  visualization_msgs::MarkerArray ma;
+  const int max_iterations = 1000;
+  const int min_iterations = 25;
+  int iteration = 0;
   int id = 0;
+  double score = 0;
+  const double EPS = 0.001;
+  visualization_msgs::MarkerArray ma;
   ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform, "icp"));
   ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity(), "icp_transformed"));
   do {
@@ -331,19 +329,19 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
     transform = newTransform;
 
     double newScore = applyTransformAndcomputeScore(transformedCloud, localTrans, inlier_kernel);
-    if(iter < 200 || newScore > score + EPS)
+    if(iteration < min_iterations || newScore > score + EPS)
         score = newScore;
     else
         break;
 
     geometry_msgs::Pose pose;
     tf::poseEigenToMsg(transform, pose);
-    ROS_INFO_STREAM(pose);
-    printf("i: %d: ICP score: %f\n", iter, score);
+    //ROS_INFO_STREAM(pose);
+    printf("i: %d: ICP score: %f\n", iteration, score);
 
     ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform, "icp"));
     ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity(), "icp_transformed"));
-  } while (++iter < max_iterations);
+  } while (++iteration < max_iterations);
 
   ma.markers.push_back(createClusterMarker(rawCloud, 12345, cloud_pose, transform, "final"));
   pubMarker.publish(ma);
