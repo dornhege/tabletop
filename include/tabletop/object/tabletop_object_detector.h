@@ -53,7 +53,7 @@ class TabletopObjectRecognizer
 {
   private:
     //! The instance of the detector used for all detecting tasks
-    ExhaustiveFitDetector<IterativeTranslationFitter> detector_;
+    ExhaustiveFitDetector detector_;
 
     //! The threshold for merging two models that were fit very close to each other
     double fit_merge_threshold_;
@@ -71,7 +71,7 @@ class TabletopObjectRecognizer
     //! Subscribes to and advertises topics; initializes fitter
     TabletopObjectRecognizer()
     {
-      detector_ = ExhaustiveFitDetector<IterativeTranslationFitter>();
+      detector_ = ExhaustiveFitDetector();
       //initialize operational flags
       fit_merge_threshold_ = 0.02;
 
@@ -93,7 +93,7 @@ class TabletopObjectRecognizer
     void
     addObject(int model_id, const shape_msgs::Mesh & mesh)
     {
-      detector_.addObject(model_id, mesh);
+      detector_.addObject<IterativeTranslationFitter>(model_id, mesh);
     }
 
     /** Structure used a return type for objectDetection */

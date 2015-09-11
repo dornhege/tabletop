@@ -293,7 +293,6 @@ Eigen::Affine3d computeLocalTransform(const Eigen::Matrix3d & W, const Eigen::Ve
 }
 
 /* TODO
-   final model score - match back? --> cleanup  and fix.
    make icp/old/icp2d options -> Check reuse code for old of this -> new class
    make 2d ICP
    try 45 deg as second initial guess to prevent 90 deg flipping

@@ -57,12 +57,11 @@ namespace tabletop_object_detector {
   This class just initializes a whole bunch of individual fitters, then, when given a 
   new cloud, tries to fit all of them. It will then return the fits with the best scores.  
 */
-template <class Fitter>
 class ExhaustiveFitDetector
 {
  private:
   //! Stores the individual model to cloud fitters, each initialized with a model
-  std::vector<Fitter*> templates;
+  std::vector<ModelToCloudFitter*> templates;
 
   //! Stores a list of model ids which may be in the list of templates, but which we should not look at
   std::set<int> model_exclusion_set_;
@@ -101,10 +100,11 @@ class ExhaustiveFitDetector
       templates.clear();
     }
 
+    template <class Fitter>
     void
     addObject(int model_id, const shape_msgs::Mesh & mesh)
     {
-      Fitter* fitter = new Fitter();
+      ModelToCloudFitter* fitter = new Fitter();
       fitter->initializeFromMesh(mesh);
       templates.push_back(fitter);
       //set the model ID in the template so that we can use it later
@@ -147,8 +147,7 @@ class ExhaustiveFitDetector
   }
 };
 
-template <class Fitter>
-ExhaustiveFitDetector<Fitter>::~ExhaustiveFitDetector()
+ExhaustiveFitDetector::~ExhaustiveFitDetector()
 {
   for (size_t i=0;i<templates.size();++i) {
     delete templates[i];

@@ -48,6 +48,7 @@
 #include <geometry_msgs/Pose.h>
 #include <sensor_msgs/PointCloud.h>
 #include <shape_msgs/Mesh.h>
+#include <opencv2/flann/flann.hpp>
 
 namespace distance_field {
   class PropagationDistanceField;
@@ -127,11 +128,11 @@ class ModelToCloudFitter
   //----------------------------------------------------------------
 
   //! Initialize this template from a mesh
-  // void initializeFromMesh(const tabletop::Shape &mesh) {}
+  virtual void initializeFromMesh(const shape_msgs::Mesh &mesh) = 0;
 
   //! The main fitting function
-  // template <class PointCloudType>
-  //  ModelFitInfo fitPointCloud(const PointCloudType &cloud);
+  virtual ModelFitInfo fitPointCloud(const std::vector<cv::Vec3f>& cloud,
+          cv::flann::Index &search, double min_object_score, const geometry_msgs::Pose & cloud_pose) const = 0;
 };
 
 //! An individual fitter equipped with a distance field stored as a voxel grid
