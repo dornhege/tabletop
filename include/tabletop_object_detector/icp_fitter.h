@@ -44,17 +44,6 @@
 
 namespace tabletop_object_detector {
 
-// use M-kernel to weight inliers and suppress the influence of outliers from linear to just constant ->
-// 1) more robust ICP (not too sensitive to outliers)
-// 2) score = inliers, but as a floating point value -> no cut off threshold -> smooth -> can better distinguish between similar poses.
-inline double huberKernelX (double clipping, double x)
-{
-  if (x < clipping)
-    return 1.0;
-  else
-    return (clipping / x);
-}
-
 //! Does an ICP fitting
 class IcpFitter : public DistanceFieldFitter
 {
@@ -93,6 +82,21 @@ class IcpFitter : public DistanceFieldFitter
   void computeMus(const EigenSTL::vector_Vector3d & cloud,
           Eigen::Vector3d & cloudMu, Eigen::Vector3d & distance_voxel_grid_Mu,
          boost::function<double(double)> distance_selection_kernel) const;
+
+  static inline double selectionKernel(double clip, double x)
+  {
+      if(x <= clip)
+          return 1.0;
+      return 0.0;
+  }
+
+  static inline double huberKernel(double clipping, double x)
+  {
+      if (x < clipping)
+          return 1.0;
+      else
+          return (clipping / x);
+  }
 
  public:
   //! Stub, just calls super's constructor

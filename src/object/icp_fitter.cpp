@@ -234,9 +234,6 @@ Eigen::Affine3d IcpFitter::computeLocalTransform(const Eigen::Matrix3d & W, cons
 }
 
 /* TODO
-   make icp/old/icp2d options -> Check reuse code for old of this -> new class
-   -> cleanup interface vs. debugging code (cloud_pose)
-   -> Pull up all double code (model fit score, kernels)
    make 2d ICP
    try 45 deg as second initial guess to prevent 90 deg flipping
 
@@ -245,14 +242,8 @@ Eigen::Affine3d IcpFitter::computeLocalTransform(const Eigen::Matrix3d & W, cons
    incomding frames: figure this out, probably incoming msg frame, do we have that???
    Params for everything
    sort out data types
+   cleanup vis code
    */
-
-double selectionKernel(double clip, double x)
-{
-    if(x <= clip)
-        return 1.0;
-    return 0.0;
-}
 
 /*! Performs standard iterative closest points (ICP).
  *
@@ -274,7 +265,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   }
 
   //boost::function<double(double)> kernel = boost::bind(huberKernelX, clipping_, _1);
-  boost::function<double(double)> huber_kernel = boost::bind(huberKernelX, 0.002, _1);
+  boost::function<double(double)> huber_kernel = boost::bind(huberKernel, 0.002, _1);
   boost::function<double(double)> inlier_kernel = boost::bind(selectionKernel, 0.0075, _1);
   boost::function<double(double)> outlier_kernel = boost::bind(selectionKernel, 0.02, _1);
   inlier_kernel = huber_kernel;

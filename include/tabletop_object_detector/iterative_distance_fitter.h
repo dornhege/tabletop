@@ -44,16 +44,7 @@
 
 namespace tabletop_object_detector {
 
-// use M-kernel to weight inliers and suppress the influence of outliers from linear to just constant ->
-// 1) more robust ICP (not too sensitive to outliers)
-// 2) score = inliers, but as a floating point value -> no cut off threshold -> smooth -> can better distinguish between similar poses.
-inline double huberKernel (double clipping, double x)
-{
-  if (x < clipping)
-    return 1.0;
-  else
-    return (clipping / x);
-}
+
 
 //! Does an ICP-like fitting only in the X and Y translation DOFs
 class IterativeTranslationFitter : public DistanceFieldFitter
@@ -71,6 +62,17 @@ class IterativeTranslationFitter : public DistanceFieldFitter
 
   double getModelFitScore(const std::vector<cv::Vec3f>& cloud, const cv::Point3f& location,
                           boost::function<double(double)> kernel, cv::flann::Index& search) const;
+
+  // use M-kernel to weight inliers and suppress the influence of outliers from linear to just constant ->
+  // 1) more robust ICP (not too sensitive to outliers)
+  // 2) score = inliers, but as a floating point value -> no cut off threshold -> smooth -> can better distinguish between similar poses.
+  static inline double huberKernel (double clipping, double x)
+  {
+      if (x < clipping)
+          return 1.0;
+      else
+          return (clipping / x);
+  }
 
  public:
   //! Stub, just calls super's constructor
