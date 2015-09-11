@@ -48,7 +48,19 @@ namespace tabletop_object_detector {
 class IcpFitter : public DistanceFieldFitter
 {
  private:
-  double clipping_;
+  int min_iterations_;
+  int max_iterations_;
+  double min_iteration_improvement_;
+
+  double downsample_leaf_size_;
+
+  // for ICP correspondences to consider
+  double outlier_dist_;
+  std::string outlier_kernel_;
+  // for computing the match score
+  double inlier_dist_;
+  std::string inlier_kernel_;
+
   ros::Publisher pubMarker;
 
   //! Helper function for fitting
@@ -102,7 +114,16 @@ class IcpFitter : public DistanceFieldFitter
   //! Stub, just calls super's constructor
   IcpFitter() : DistanceFieldFitter() {
     ros::NodeHandle nhPriv("~");
-    nhPriv.param("clipping", clipping_, 0.0075);
+    nhPriv.param("min_iterations", min_iterations_, 20);
+    nhPriv.param("max_iterations", max_iterations_, 1000);
+    nhPriv.param("min_iteration_improvement", min_iteration_improvement_, 0.001);
+
+    nhPriv.param("downsample_leaf_size", downsample_leaf_size_, 0.003);
+
+    nhPriv.param("outlier_dist", outlier_dist_, 0.02);
+    nhPriv.param("outlier_kernel", outlier_kernel_, std::string("selection"));
+    nhPriv.param("inlier_dist", inlier_dist_, 0.002);
+    nhPriv.param("inlier_kernel", inlier_kernel_, std::string("huber"));
 
     ros::NodeHandle nh;
     pubMarker = nh.advertise<visualization_msgs::MarkerArray>("object_detection_marker", 10);

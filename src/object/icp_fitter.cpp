@@ -237,7 +237,6 @@ Eigen::Affine3d IcpFitter::computeLocalTransform(const Eigen::Matrix3d & W, cons
    try 45 deg as second initial guess to prevent 90 deg flipping
 
    maybe every X steps fix linear = rotation?
-   Params for everything
    sort out data types
    incoming frames: figure this out, probably incoming msg frame, do we have that???
    cleanup vis code
@@ -262,11 +261,22 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
     return ModelFitInfo(model_id_, bogus_pose, 0.0);
   }
 
-  //boost::function<double(double)> kernel = boost::bind(huberKernelX, clipping_, _1);
-  boost::function<double(double)> huber_kernel = boost::bind(huberKernel, 0.002, _1);
-  boost::function<double(double)> inlier_kernel = boost::bind(selectionKernel, 0.0075, _1);
-  boost::function<double(double)> outlier_kernel = boost::bind(selectionKernel, 0.02, _1);
-  inlier_kernel = huber_kernel;
+  boost::function<double(double)> inlier_kernel;
+  boost::function<double(double)> outlier_kernel;
+  if(inlier_kernel_ == "huber") {
+      inlier_kernel = boost::bind(huberKernel, inlier_dist_, _1);
+  } else if(inlier_kernel_ == "selection") {
+      inlier_kernel = boost::bind(selectionKernel, inlier_dist_, _1);
+  } else {
+      ROS_ERROR("Unknown kernel: %s", inlier_kernel_.c_str());
+  }
+  if(outlier_kernel_ == "huber") {
+      outlier_kernel = boost::bind(huberKernel, outlier_dist_, _1);
+  } else if(outlier_kernel_ == "selection") {
+      outlier_kernel = boost::bind(selectionKernel, outlier_dist_, _1);
+  } else {
+      ROS_ERROR("Unknown kernel: %s", outlier_kernel_.c_str());
+  }
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr inputCloud(new pcl::PointCloud<pcl::PointXYZ>());
   for(size_t i = 0; i < cloud.size(); i++) {
@@ -277,7 +287,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   // Downsample cloud
   pcl::VoxelGrid<pcl::PointXYZ> vg;
   vg.setInputCloud(inputCloud);
-  vg.setLeafSize(0.003, 0.003, 0.003);
+  vg.setLeafSize(downsample_leaf_size_, downsample_leaf_size_, downsample_leaf_size_);
   vg.filter(downsampledCloud);
 
   printf("INPUT: %zu down %zu\n", cloud.size(), downsampledCloud.size());
@@ -303,12 +313,9 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   }
 
   printf("fitPointCloud for model %d\n", model_id_);
-  const int max_iterations = 1000;
-  const int min_iterations = 25;
   int iteration = 0;
   int id = 0;
   double score = 0;
-  const double EPS = 0.001;
   visualization_msgs::MarkerArray ma;
   ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform, "icp"));
   ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity(), "icp_transformed"));
@@ -329,7 +336,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
     transform = newTransform;
 
     double newScore = applyTransformAndcomputeScore(transformedCloud, localTrans, inlier_kernel);
-    if(iteration < min_iterations || newScore > score + EPS)
+    if(iteration < min_iterations_ || newScore > score + min_iteration_improvement_)
         score = newScore;
     else
         break;
@@ -341,7 +348,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
 
     ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform, "icp"));
     ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity(), "icp_transformed"));
-  } while (++iteration < max_iterations);
+  } while (++iteration < max_iterations_);
 
   ma.markers.push_back(createClusterMarker(rawCloud, 12345, cloud_pose, transform, "final"));
   pubMarker.publish(ma);

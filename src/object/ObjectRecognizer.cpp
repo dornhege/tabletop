@@ -133,10 +133,10 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
       }
 
       household_id_to_db_id_[template_db_id] = document.get_field<std::string>("object_id");
-      if(household_id_to_db_id_[template_db_id] != "c33052bd56fa26ccf598f4839901eca3") {
-          std::cout << "Skipping model: " << document.id() << " for object id: " << household_id_to_db_id_[template_db_id] << std::endl;
-          continue;
-      }
+      //if(household_id_to_db_id_[template_db_id] != "c33052bd56fa26ccf598f4839901eca3") {
+      //    std::cout << "Skipping model: " << document.id() << " for object id: " << household_id_to_db_id_[template_db_id] << std::endl;
+      //    continue;
+      //}
 
       // Load the mesh through assimp
       std::cout << "Loading model: " << document.id() << " for object id: " << household_id_to_db_id_[template_db_id];
