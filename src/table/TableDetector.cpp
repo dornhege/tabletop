@@ -197,6 +197,7 @@ namespace tabletop
         valid_plane_count = plane_coefficients.size();
       }
 
+      // fix mask for invalid tables
       for (int y = 0; y < table_mask_->rows; ++y) {
           for (int x = 0; x < table_mask_->cols; ++x) {
               if(table_mask_->at<uchar>(y, x) != 255) {
@@ -207,7 +208,6 @@ namespace tabletop
               }
           }
       }
-      // TODO fix mask
 
       if (valid_plane_count > 0)
       {
@@ -260,8 +260,8 @@ namespace tabletop
               table_coefficients_->push_back(plane_coefficients[i]);
             else
               table_coefficients_->push_back(-plane_coefficients[i]);
-            printf("VALID table: %f %f %f - %f\n", plane_coefficients[i][0],plane_coefficients[i][1],plane_coefficients[i][2],plane_coefficients[i][3]);
-            printf("VALID table: %f %f %f - %f\n", (*table_coefficients_).back()[0],(*table_coefficients_).back()[1],(*table_coefficients_).back()[2],(*table_coefficients_).back()[3]);
+            printf("VALID table plane coeffs: %f %f %f - %f\n", plane_coefficients[i][0],plane_coefficients[i][1],plane_coefficients[i][2],plane_coefficients[i][3]);
+            printf("VALID table table coeffs: %f %f %f - %f\n", (*table_coefficients_).back()[0],(*table_coefficients_).back()[1],(*table_coefficients_).back()[2],(*table_coefficients_).back()[3]);
 
             // Compute the transforms
             cv::Matx33f R;
@@ -269,7 +269,7 @@ namespace tabletop
             getPlaneTransform((*table_coefficients_).back(), R, T);
             PoseResult pose_result;
             pose_result.set_R(cv::Mat(R));
-            ROS_INFO_STREAM("PR: " << R << "\n" << cv::Mat(R));
+            //ROS_INFO_STREAM("PoseRot: " << R << "\n" << cv::Mat(R));
 
             // Get the center of the hull
             cv::Moments m = moments(hull);
