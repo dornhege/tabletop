@@ -68,32 +68,16 @@ cv::Point3f IcpFitter::centerOfSupport(const std::vector<cv::Vec3f>& cloud) cons
   return center;
 }
 
-visualization_msgs::Marker IcpFitter::createClusterMarker(const EigenSTL::vector_Vector3d & cluster, int id,
+visualization_msgs::Marker IcpFitter::createMeshMarker(int id,
         const geometry_msgs::Pose & cloud_pose, const Eigen::Affine3d & icp_transform,
         const std::string & ns) const
 {
     visualization_msgs::Marker marker;
-    if(id >= 42000 && id != 12345 || id == 12346) {
-        id -= 42000;
-        marker.color.g = 1.0;
-        marker.type = visualization_msgs::Marker::POINTS;
-        for(int i = 0; i < cluster.size(); i++) {
-            geometry_msgs::Point pt;
-            pt.x = cluster[i].x();
-            pt.y = cluster[i].y();
-            pt.z = cluster[i].z();
-            marker.points.push_back(pt);
-        }
-        marker.scale.x = 0.01;
-        marker.scale.y = 0.01;
-        marker.scale.z = 0.01;
-    } else {
-        marker.scale.x = 1.0;
-        marker.scale.y = 1.0;
-        marker.scale.z = 1.0;
-        shape_tools::constructMarkerFromShape(mesh_, marker); // assumes this was initialized from mesh
-    }
-    marker.header.frame_id = "head_mount_kinect_rgb_optical_frame";
+    marker.scale.x = 1.0;
+    marker.scale.y = 1.0;
+    marker.scale.z = 1.0;
+    shape_tools::constructMarkerFromShape(mesh_, marker); // assumes this was initialized from mesh
+    marker.header.frame_id = sensor_frame_id_;
     marker.id = id;
     marker.ns = ns;
     marker.action = visualization_msgs::Marker::ADD;
@@ -106,13 +90,43 @@ visualization_msgs::Marker IcpFitter::createClusterMarker(const EigenSTL::vector
     marker.color.b = 0.5 + id%100/10.0;
     if(marker.color.b > 1.0)
         marker.color.b = 1.0;
-    if(id == 12345) {
+    if(ns == "final") {
         marker.color.r = 1.0;
         marker.color.g = 1.0;
         marker.color.b = 0.0;
         marker.color.a = 0.8;
     }
-    if(id == 12346) {
+    return marker;
+}
+
+visualization_msgs::Marker IcpFitter::createClusterMarker(const EigenSTL::vector_Vector3d & cluster, int id,
+        const geometry_msgs::Pose & cloud_pose,
+        const std::string & ns) const
+{
+    visualization_msgs::Marker marker;
+    marker.color.g = 1.0;
+    marker.type = visualization_msgs::Marker::POINTS;
+    for(int i = 0; i < cluster.size(); i++) {
+        geometry_msgs::Point pt;
+        pt.x = cluster[i].x();
+        pt.y = cluster[i].y();
+        pt.z = cluster[i].z();
+        marker.points.push_back(pt);
+    }
+    marker.scale.x = 0.01;
+    marker.scale.y = 0.01;
+    marker.scale.z = 0.01;
+    marker.header.frame_id = sensor_frame_id_;
+    marker.id = id;
+    marker.ns = ns;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose = cloud_pose;
+    marker.color.a = 0.5;
+    marker.color.r = id/100./10.0;
+    marker.color.b = 0.5 + id%100/10.0;
+    if(marker.color.b > 1.0)
+        marker.color.b = 1.0;
+    if(marker.ns == "model_fit_cloud") {
         marker.color.r = 1.0;
         marker.color.g = 0.0;
         marker.color.b = 1.0;
@@ -250,11 +264,12 @@ Eigen::Affine3d IcpFitter::computeLocalTransform(const Eigen::Matrix3d & W, cons
 }
 
 /* TODO
+   incoming frames: figure this out, probably incoming msg frame, do we have that???
+   cleanup debugs
    try 45 deg as second initial guess to prevent 90 deg flipping
 
    maybe every X steps fix linear = rotation?
    sort out data types
-   incoming frames: figure this out, probably incoming msg frame, do we have that???
    cleanup vis code
    */
 
@@ -333,8 +348,8 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   int id = 0;
   double score = 0;
   visualization_msgs::MarkerArray ma;
-  ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform, "icp"));
-  ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity(), "icp_transformed"));
+  ma.markers.push_back(createMeshMarker(model_id_*100 + id++, cloud_pose, transform, "icp"));
+  ma.markers.push_back(createClusterMarker(transformedCloud, model_id_*100 + id, cloud_pose, "icp_transformed"));
   do {
     Eigen::Vector3d cloudMu;
     Eigen::Vector3d distance_voxel_grid_Mu;
@@ -366,11 +381,11 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
     //ROS_INFO_STREAM(pose);
     printf("i: %d: ICP score: %f\n", iteration, score);
 
-    ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform, "icp"));
-    ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity(), "icp_transformed"));
+    ma.markers.push_back(createMeshMarker(model_id_*100 + id++, cloud_pose, transform, "icp"));
+    ma.markers.push_back(createClusterMarker(transformedCloud, model_id_*100 + id, cloud_pose, "icp_transformed"));
   } while (++iteration < max_iterations_);
 
-  ma.markers.push_back(createClusterMarker(rawCloud, 12345, cloud_pose, transform, "final"));
+  ma.markers.push_back(createMeshMarker(12345, cloud_pose, transform, "final"));
   pubMarker.publish(ma);
 
   geometry_msgs::Pose pose;
@@ -414,7 +429,7 @@ double IcpFitter::getModelFitScore(const std::vector<cv::Vec3f>& cloud,
     inlier_count += kernel(sqrt(distances[0]));
   }
   visualization_msgs::MarkerArray ma;
-  ma.markers.push_back(createClusterMarker(model_cloud, 12346, cloud_pose, Eigen::Affine3d::Identity(), "model_fit_cloud"));
+  ma.markers.push_back(createClusterMarker(model_cloud, 12346, cloud_pose, "model_fit_cloud"));
   pubMarker.publish(ma);
   return inlier_count / model_surface_points_.size();
 }

@@ -108,8 +108,12 @@ namespace tabletop
       nh.param("filter_planes", filter_planes_, false);
       nh.param("min_table_height", min_table_height_, 0.5);
       nh.param("max_table_height", max_table_height_, 1.0);
-      nh.param("robot_frame", robot_frame_id_, std::string("/base_link"));
-      nh.param("sensor_frame", sensor_frame_id_, std::string("/head_mount_kinect_rgb_optical_frame"));
+      if(!nh.getParam("robot_frame", robot_frame_id_)) {
+          ROS_ERROR("%s: Could not get param for robot_frame!", __PRETTY_FUNCTION__);
+      }
+      if(!nh.getParam("sensor_frame", sensor_frame_id_)) {
+          ROS_ERROR("%s: Could not get param for sensor_frame!", __PRETTY_FUNCTION__);
+      }
 
       double max_angle_diff;
       double table_normal_x;

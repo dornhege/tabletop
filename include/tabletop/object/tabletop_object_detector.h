@@ -61,6 +61,8 @@ class TabletopObjectRecognizer
     ros::Publisher pubMarker_;
     std::string fitter_type_;
 
+    std::string sensor_frame_id_;
+
     double getConfidence (double score) const
     {
       return (1.0 - (1.0 - score) * (1.0 - score));
@@ -82,6 +84,9 @@ class TabletopObjectRecognizer
 
       ros::NodeHandle nhPriv("~");
       nhPriv.param("fitter_type", fitter_type_, std::string("iterative_translation"));
+      if(!nhPriv.getParam("sensor_frame", sensor_frame_id_)) {
+          ROS_WARN("%s: Could not get parameter for sensor_frame.", __PRETTY_FUNCTION__);
+      }
     }
 
     //! Empty stub
@@ -122,7 +127,7 @@ class TabletopObjectRecognizer
             const geometry_msgs::Pose & cluster_pose)
     {
         visualization_msgs::Marker marker;
-        marker.header.frame_id = "head_mount_kinect_rgb_optical_frame"; // TODO figure this out, probably incoming msg frame, do we have that???
+        marker.header.frame_id = sensor_frame_id_;
         marker.ns = "clusters";
         marker.id = id;
         marker.type = visualization_msgs::Marker::POINTS;
