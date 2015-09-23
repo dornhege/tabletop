@@ -102,6 +102,8 @@ class TabletopObjectRecognizer
             detector_.addObject<IterativeTranslationFitter>(model_id, mesh);
         else if(fitter_type_ == "icp")
             detector_.addObject<IcpFitter>(model_id, mesh);
+        else if(fitter_type_ == "icp_2d")
+            detector_.addObject<IcpFitter2d>(model_id, mesh);
         else
             ROS_WARN("%s: Unknown fitter type: %s", __PRETTY_FUNCTION__, fitter_type_.c_str());
     }

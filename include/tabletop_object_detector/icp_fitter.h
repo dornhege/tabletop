@@ -32,7 +32,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-// Author(s): Marius Muja, Matei Ciocarlie and Romain Thibaux
+// Author(s): Christian Dornhege, Marius Muja, Matei Ciocarlie and Romain Thibaux
 
 #ifndef _ICP_FITTER_H_
 #define _ICP_FITTER_H_
@@ -110,9 +110,13 @@ class IcpFitter : public DistanceFieldFitter
           return (clipping / x);
   }
 
+ protected:
+  // do normal 3d ICP or restrict to 2d transforms
+  bool use_3d_icp_;
+
  public:
   //! Stub, just calls super's constructor
-  IcpFitter() : DistanceFieldFitter() {
+  IcpFitter() : DistanceFieldFitter(), use_3d_icp_(true) {
     ros::NodeHandle nhPriv("~");
     nhPriv.param("min_iterations", min_iterations_, 20);
     nhPriv.param("max_iterations", max_iterations_, 1000);
@@ -135,6 +139,15 @@ class IcpFitter : public DistanceFieldFitter
   //! Main fitting function
   ModelFitInfo fitPointCloud(const std::vector<cv::Vec3f>& cloud, const geometry_msgs::Pose & cloud_pose,
           cv::flann::Index &search, double min_object_score) const;
+};
+
+class IcpFitter2d : public IcpFitter
+{
+    public:
+        IcpFitter2d() : IcpFitter()
+        {
+            use_3d_icp_ = false;
+        }
 };
 
 } //namespace

@@ -210,6 +210,10 @@ Eigen::Matrix3d IcpFitter::computeW(
                 Eigen::Vector3d modelPt(cx, cy, cz);    // grid point corresponce
                 modelPt -= distance_voxel_grid_Mu;;
                 Eigen::Vector3d cloudPtX = cloudPt - cloudMu;
+                if(!use_3d_icp_) {
+                    modelPt.z() = 0;
+                    cloudPtX.z() = 0;
+                }
 
                 val = distance_voxel_grid_->getDistance(x, y, z);
                 double weight = distance_selection_kernel(val);
@@ -225,6 +229,19 @@ Eigen::Affine3d IcpFitter::computeLocalTransform(const Eigen::Matrix3d & W, cons
 {
     Eigen::JacobiSVD<Eigen::Matrix3d> svd(W, Eigen::ComputeFullU | Eigen::ComputeFullV);
     Eigen::Matrix3d R = svd.matrixU() * svd.matrixV().transpose();
+    if(!use_3d_icp_) {
+        // super nasty hack
+        double angZ = atan2(R(0, 1), R(0, 0));
+        R(0, 0) = cos(angZ);
+        R(1, 1) = cos(angZ);
+        R(0, 1) = sin(angZ);
+        R(1, 0) = -sin(angZ);
+        R(0, 2) = 0.0;
+        R(1, 2) = 0.0;
+        R(2, 0) = 0.0;
+        R(2, 1) = 0.0;
+        R(2, 2) = 1.0;
+    }
     Eigen::Vector3d t = distance_voxel_grid_Mu - R * cloudMu;
     Eigen::Affine3d localTrans = Eigen::Affine3d::Identity();
     localTrans.linear() = R;
@@ -233,7 +250,6 @@ Eigen::Affine3d IcpFitter::computeLocalTransform(const Eigen::Matrix3d & W, cons
 }
 
 /* TODO
-   make 2d ICP
    try 45 deg as second initial guess to prevent 90 deg flipping
 
    maybe every X steps fix linear = rotation?
@@ -323,6 +339,10 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
     Eigen::Vector3d cloudMu;
     Eigen::Vector3d distance_voxel_grid_Mu;
     computeMus(transformedCloud, cloudMu, distance_voxel_grid_Mu, outlier_kernel);
+    if(!use_3d_icp_) {
+        cloudMu.z() = 0;
+        distance_voxel_grid_Mu.z() = 0;
+    }
 
     Eigen::Matrix3d W = computeW(transformedCloud, cloudMu, distance_voxel_grid_Mu, outlier_kernel);
 
