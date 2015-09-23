@@ -348,8 +348,10 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   int id = 0;
   double score = 0;
   visualization_msgs::MarkerArray ma;
-  ma.markers.push_back(createMeshMarker(model_id_*100 + id++, cloud_pose, transform, "icp"));
-  ma.markers.push_back(createClusterMarker(transformedCloud, model_id_*100 + id, cloud_pose, "icp_transformed"));
+  if(pubMarker.getNumSubscribers() > 0) {
+      ma.markers.push_back(createMeshMarker(model_id_*100 + id++, cloud_pose, transform, "icp"));
+      ma.markers.push_back(createClusterMarker(transformedCloud, model_id_*100 + id, cloud_pose, "icp_transformed"));
+  }
   do {
     Eigen::Vector3d cloudMu;
     Eigen::Vector3d distance_voxel_grid_Mu;
@@ -381,12 +383,16 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
     //ROS_INFO_STREAM(pose);
     printf("i: %d: ICP score: %f\n", iteration, score);
 
-    ma.markers.push_back(createMeshMarker(model_id_*100 + id++, cloud_pose, transform, "icp"));
-    ma.markers.push_back(createClusterMarker(transformedCloud, model_id_*100 + id, cloud_pose, "icp_transformed"));
+    if(pubMarker.getNumSubscribers() > 0) {
+        ma.markers.push_back(createMeshMarker(model_id_*100 + id++, cloud_pose, transform, "icp"));
+        ma.markers.push_back(createClusterMarker(transformedCloud, model_id_*100 + id, cloud_pose, "icp_transformed"));
+    }
   } while (++iteration < max_iterations_);
 
-  ma.markers.push_back(createMeshMarker(12345, cloud_pose, transform, "final"));
-  pubMarker.publish(ma);
+  if(pubMarker.getNumSubscribers() > 0) {
+      ma.markers.push_back(createMeshMarker(12345, cloud_pose, transform, "final"));
+      pubMarker.publish(ma);
+  }
 
   geometry_msgs::Pose pose;
   tf::poseEigenToMsg(transform, pose);
@@ -428,9 +434,11 @@ double IcpFitter::getModelFitScore(const std::vector<cv::Vec3f>& cloud,
     search.knnSearch(points, indices, distances, 1);
     inlier_count += kernel(sqrt(distances[0]));
   }
-  visualization_msgs::MarkerArray ma;
-  ma.markers.push_back(createClusterMarker(model_cloud, 12346, cloud_pose, "model_fit_cloud"));
-  pubMarker.publish(ma);
+  if(pubMarker.getNumSubscribers() > 0) {
+      visualization_msgs::MarkerArray ma;
+      ma.markers.push_back(createClusterMarker(model_cloud, 12346, cloud_pose, "model_fit_cloud"));
+      pubMarker.publish(ma);
+  }
   return inlier_count / model_surface_points_.size();
 }
 
