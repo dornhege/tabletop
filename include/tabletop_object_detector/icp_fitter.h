@@ -116,6 +116,8 @@ class IcpFitter : public DistanceFieldFitter
           return (clipping / x);
   }
 
+  static boost::function<double(double)> buildKernel(const std::string & kernel_type, double kernel_dist);
+
  protected:
   // do normal 3d ICP or restrict to 2d transforms
   bool use_3d_icp_;

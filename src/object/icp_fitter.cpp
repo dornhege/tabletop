@@ -45,6 +45,12 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 
+/* Possible improvements:
+ * - For convergence: try 45 deg as second initial guess to prevent 90 deg flipping
+ * - For numerical stability: maybe every X steps fix transform.linear = transform.rotation?
+ * - For performance: Sort out data types to prevent conversion/copying of point clouds
+ */
+
 namespace tabletop_object_detector
 {
 
@@ -263,15 +269,18 @@ Eigen::Affine3d IcpFitter::computeLocalTransform(const Eigen::Matrix3d & W, cons
     return localTrans;
 }
 
-/* TODO
-   incoming frames: figure this out, probably incoming msg frame, do we have that???
-   cleanup debugs
-   try 45 deg as second initial guess to prevent 90 deg flipping
-
-   maybe every X steps fix linear = rotation?
-   sort out data types
-   cleanup vis code
-   */
+boost::function<double(double)> IcpFitter::buildKernel(const std::string & kernel_type, double kernel_dist)
+{
+  boost::function<double(double)> kernel;
+  if(kernel_type == "huber") {
+      kernel = boost::bind(huberKernel, kernel_dist, _1);
+  } else if(kernel_type == "selection") {
+      kernel = boost::bind(selectionKernel, kernel_dist, _1);
+  } else {
+      ROS_ERROR("Unknown kernel: %s", kernel_type.c_str());
+  }
+  return kernel;
+}
 
 /*! Performs standard iterative closest points (ICP).
  *
@@ -286,28 +295,14 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
         const geometry_msgs::Pose & cloud_pose,
         cv::flann::Index &search, double min_object_score) const
 {
-  if (cloud.empty()) {
+  if(cloud.empty()) {
     //ROS_ERROR("Attempt to fit model to empty point cloud");
     geometry_msgs::Pose bogus_pose;
     return ModelFitInfo(model_id_, bogus_pose, 0.0);
   }
 
-  boost::function<double(double)> inlier_kernel;
-  boost::function<double(double)> outlier_kernel;
-  if(inlier_kernel_ == "huber") {
-      inlier_kernel = boost::bind(huberKernel, inlier_dist_, _1);
-  } else if(inlier_kernel_ == "selection") {
-      inlier_kernel = boost::bind(selectionKernel, inlier_dist_, _1);
-  } else {
-      ROS_ERROR("Unknown kernel: %s", inlier_kernel_.c_str());
-  }
-  if(outlier_kernel_ == "huber") {
-      outlier_kernel = boost::bind(huberKernel, outlier_dist_, _1);
-  } else if(outlier_kernel_ == "selection") {
-      outlier_kernel = boost::bind(selectionKernel, outlier_dist_, _1);
-  } else {
-      ROS_ERROR("Unknown kernel: %s", outlier_kernel_.c_str());
-  }
+  boost::function<double(double)> inlier_kernel = buildKernel(inlier_kernel_, inlier_dist_);
+  boost::function<double(double)> outlier_kernel = buildKernel(outlier_kernel_, outlier_dist_);
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr inputCloud(new pcl::PointCloud<pcl::PointXYZ>());
   for(size_t i = 0; i < cloud.size(); i++) {
@@ -329,22 +324,17 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   // As we can't transform the distance_voxel_grid_, we transform the input cloud towards the model
   // Thus, transformedCloud is transform^-1 * cloud
   EigenSTL::vector_Vector3d transformedCloud;
-  EigenSTL::vector_Vector3d rawCloud;
   transformedCloud.reserve(downsampledCloud.size());
-  rawCloud.reserve(downsampledCloud.size());
   // use center as initial guess
   cv::Point3f center = centerOfSupport(cloud);
   transform.translation().x() = center.x;
   transform.translation().y() = center.y;
   for(size_t i = 0; i < downsampledCloud.size(); i++) {
-      rawCloud.push_back(Eigen::Vector3d(
-                  downsampledCloud[i].x, downsampledCloud[i].y, downsampledCloud[i].z));
       transformedCloud.push_back(Eigen::Vector3d(
                   downsampledCloud[i].x - center.x, downsampledCloud[i].y - center.y, downsampledCloud[i].z));
   }
 
   ROS_INFO("fitPointCloud for model %d", model_id_);
-  int iteration = 0;
   int id = 0;
   double score = 0;
   visualization_msgs::MarkerArray ma;
@@ -352,6 +342,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
       ma.markers.push_back(createMeshMarker(model_id_*100 + id++, cloud_pose, transform, "icp"));
       ma.markers.push_back(createClusterMarker(transformedCloud, model_id_*100 + id, cloud_pose, "icp_transformed"));
   }
+  int iteration = 0;
   do {
     Eigen::Vector3d cloudMu;
     Eigen::Vector3d distance_voxel_grid_Mu;
