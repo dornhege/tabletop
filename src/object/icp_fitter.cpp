@@ -321,7 +321,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   vg.setLeafSize(downsample_leaf_size_, downsample_leaf_size_, downsample_leaf_size_);
   vg.filter(downsampledCloud);
 
-  printf("INPUT: %zu down %zu\n", cloud.size(), downsampledCloud.size());
+  ROS_DEBUG("Downsampled input: from %zu to %zu points.", cloud.size(), downsampledCloud.size());
 
   // transform is the transformation to move the model/distance_voxel_grid to the input point cloud
   // i.e. the resulting pose of the model
@@ -343,7 +343,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
                   downsampledCloud[i].x - center.x, downsampledCloud[i].y - center.y, downsampledCloud[i].z));
   }
 
-  printf("fitPointCloud for model %d\n", model_id_);
+  ROS_INFO("fitPointCloud for model %d", model_id_);
   int iteration = 0;
   int id = 0;
   double score = 0;
@@ -378,10 +378,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
     else
         break;
 
-    geometry_msgs::Pose pose;
-    tf::poseEigenToMsg(transform, pose);
-    //ROS_INFO_STREAM(pose);
-    printf("i: %d: ICP score: %f\n", iteration, score);
+    ROS_DEBUG("i: %d: ICP score: %f", iteration, score);
 
     if(pubMarker.getNumSubscribers() > 0) {
         ma.markers.push_back(createMeshMarker(model_id_*100 + id++, cloud_pose, transform, "icp"));
@@ -396,7 +393,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
 
   geometry_msgs::Pose pose;
   tf::poseEigenToMsg(transform, pose);
-  ROS_INFO_STREAM("Final pose: " << pose);
+  ROS_DEBUG_STREAM("Final pose: " << pose);
 
   // evaluating the model score is cost-intensive and since the model_score <= 1 ->
   // if score already below min_object_score, then set to 0 and stop further evaluation!
@@ -404,7 +401,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
     double model_score = getModelFitScore(cloud, transform, inlier_kernel, search, cloud_pose);
     //// since for waterthight model only 50% of the points are visible at max, we weight the model_score only half.
     score *= sqrt(model_score);
-    printf("model_score: %f final score: %f\n", model_score, score);
+    ROS_DEBUG("Model_score: %f Final score: %f", model_score, score);
   } else
       score = 0;
 
@@ -422,7 +419,7 @@ double IcpFitter::getModelFitScore(const std::vector<cv::Vec3f>& cloud,
   std::vector<float> distances(1);
   cv::Mat_<float> points(1, 3);
   EigenSTL::vector_Vector3d model_cloud;
-  printf("model_surface_points_: %zu\n", model_surface_points_.size());
+  ROS_DEBUG("%s: Model_surface_points: %zu", __func__, model_surface_points_.size());
   for (std::vector<cv::Point3f>::const_iterator mIt = model_surface_points_.begin(); mIt != model_surface_points_.end(); ++mIt) {
       Eigen::Vector3d pt(mIt->x, mIt->y, mIt->z);
       Eigen::Vector3d transformedPoint = pose * pt;

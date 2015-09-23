@@ -183,15 +183,12 @@ namespace tabletop
 
           tf::Vector3 normal_ = basis * normal;
           double dist_ = normal_.dot (origin) - dist;
-          printf("AT table: %f %f %f - %f\n", plane_coefficients[pIdx][0],plane_coefficients[pIdx][1],plane_coefficients[pIdx][2],plane_coefficients[pIdx][3]);
-          printf("%f %f %f - %f\n", normal_.x(), normal_.y(), normal_.z(), dist_);
+          ROS_DEBUG("Table plane coefficients: %f %f %f - %f", plane_coefficients[pIdx][0],plane_coefficients[pIdx][1],plane_coefficients[pIdx][2],plane_coefficients[pIdx][3]);
+          ROS_DEBUG("Table coefficients (robot frame): %f %f %f - %f", normal_.x(), normal_.y(), normal_.z(), dist_);
           if (normal_.dot(axis_) >= min_angle_cos_ && dist_ >= min_table_height_ && dist_ <= max_table_height_)
           {
             valid_planes [pIdx] = true;
             ++valid_plane_count;
-            printf("VALID\n");
-          } else {
-            printf("INVALID\n");
           }
         }
       }
@@ -264,8 +261,6 @@ namespace tabletop
               table_coefficients_->push_back(plane_coefficients[i]);
             else
               table_coefficients_->push_back(-plane_coefficients[i]);
-            printf("VALID table plane coeffs: %f %f %f - %f\n", plane_coefficients[i][0],plane_coefficients[i][1],plane_coefficients[i][2],plane_coefficients[i][3]);
-            printf("VALID table table coeffs: %f %f %f - %f\n", (*table_coefficients_).back()[0],(*table_coefficients_).back()[1],(*table_coefficients_).back()[2],(*table_coefficients_).back()[3]);
 
             // Compute the transforms
             cv::Matx33f R;
@@ -324,7 +319,7 @@ namespace tabletop
     else
     {
       *table_mask_ = cv::Mat (points3d_->rows, points3d_->cols, CV_8UC1);
-      ROS_WARN ("Could not get transformation, skipping frame\n");
+      ROS_WARN("Could not get transformation, skipping frame");
     }
 
     return ecto::OK;
