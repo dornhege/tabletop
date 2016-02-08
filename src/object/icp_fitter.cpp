@@ -45,6 +45,12 @@
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 
+/* Possible improvements:
+ * - For convergence: try 45 deg as second initial guess to prevent 90 deg flipping
+ * - For numerical stability: maybe every X steps fix transform.linear = transform.rotation?
+ * - For performance: Sort out data types to prevent conversion/copying of point clouds
+ */
+
 namespace tabletop_object_detector
 {
 
@@ -68,38 +74,16 @@ cv::Point3f IcpFitter::centerOfSupport(const std::vector<cv::Vec3f>& cloud) cons
   return center;
 }
 
-visualization_msgs::Marker IcpFitter::createClusterMarker(const EigenSTL::vector_Vector3d & cluster, int id,
+visualization_msgs::Marker IcpFitter::createMeshMarker(int id,
         const geometry_msgs::Pose & cloud_pose, const Eigen::Affine3d & icp_transform,
         const std::string & ns) const
 {
     visualization_msgs::Marker marker;
-    if(id >= 42000 && id != 12345 || id == 12346) {
-        id -= 42000;
-        marker.color.g = 1.0;
-        marker.type = visualization_msgs::Marker::POINTS;
-        for(int i = 0; i < cluster.size(); i++) {
-            geometry_msgs::Point pt;
-            pt.x = cluster[i].x();
-            pt.y = cluster[i].y();
-            pt.z = cluster[i].z();
-            marker.points.push_back(pt);
-        }
-        marker.scale.x = 0.01;
-        marker.scale.y = 0.01;
-        marker.scale.z = 0.01;
-    } else {
-        marker.scale.x = 1.0;
-        marker.scale.y = 1.0;
-        marker.scale.z = 1.0;
-        shape_tools::constructMarkerFromShape(mesh_, marker); // assumes this was initialized from mesh
-    }
-
-    std::string sensor_frame_id;
-    ros::NodeHandle nh("~");
-    nh.param("sensor_frame", sensor_frame_id, std::string(""));
-    ROS_ASSERT(!sensor_frame_id.empty());
-
-    marker.header.frame_id = sensor_frame_id;
+    marker.scale.x = 1.0;
+    marker.scale.y = 1.0;
+    marker.scale.z = 1.0;
+    shape_tools::constructMarkerFromShape(mesh_, marker); // assumes this was initialized from mesh
+    marker.header.frame_id = sensor_frame_id_;
     marker.id = id;
     marker.ns = ns;
     marker.action = visualization_msgs::Marker::ADD;
@@ -112,13 +96,43 @@ visualization_msgs::Marker IcpFitter::createClusterMarker(const EigenSTL::vector
     marker.color.b = 0.5 + id%100/10.0;
     if(marker.color.b > 1.0)
         marker.color.b = 1.0;
-    if(id == 12345) {
+    if(ns == "final") {
         marker.color.r = 1.0;
         marker.color.g = 1.0;
         marker.color.b = 0.0;
         marker.color.a = 0.8;
     }
-    if(id == 12346) {
+    return marker;
+}
+
+visualization_msgs::Marker IcpFitter::createClusterMarker(const EigenSTL::vector_Vector3d & cluster, int id,
+        const geometry_msgs::Pose & cloud_pose,
+        const std::string & ns) const
+{
+    visualization_msgs::Marker marker;
+    marker.color.g = 1.0;
+    marker.type = visualization_msgs::Marker::POINTS;
+    for(int i = 0; i < cluster.size(); i++) {
+        geometry_msgs::Point pt;
+        pt.x = cluster[i].x();
+        pt.y = cluster[i].y();
+        pt.z = cluster[i].z();
+        marker.points.push_back(pt);
+    }
+    marker.scale.x = 0.01;
+    marker.scale.y = 0.01;
+    marker.scale.z = 0.01;
+    marker.header.frame_id = sensor_frame_id_;
+    marker.id = id;
+    marker.ns = ns;
+    marker.action = visualization_msgs::Marker::ADD;
+    marker.pose = cloud_pose;
+    marker.color.a = 0.5;
+    marker.color.r = id/100./10.0;
+    marker.color.b = 0.5 + id%100/10.0;
+    if(marker.color.b > 1.0)
+        marker.color.b = 1.0;
+    if(marker.ns == "model_fit_cloud") {
         marker.color.r = 1.0;
         marker.color.g = 0.0;
         marker.color.b = 1.0;
@@ -216,6 +230,10 @@ Eigen::Matrix3d IcpFitter::computeW(
                 Eigen::Vector3d modelPt(cx, cy, cz);    // grid point corresponce
                 modelPt -= distance_voxel_grid_Mu;;
                 Eigen::Vector3d cloudPtX = cloudPt - cloudMu;
+                if(!use_3d_icp_) {
+                    modelPt.z() = 0;
+                    cloudPtX.z() = 0;
+                }
 
                 val = distance_voxel_grid_->getDistance(x, y, z);
                 double weight = distance_selection_kernel(val);
@@ -231,6 +249,19 @@ Eigen::Affine3d IcpFitter::computeLocalTransform(const Eigen::Matrix3d & W, cons
 {
     Eigen::JacobiSVD<Eigen::Matrix3d> svd(W, Eigen::ComputeFullU | Eigen::ComputeFullV);
     Eigen::Matrix3d R = svd.matrixU() * svd.matrixV().transpose();
+    if(!use_3d_icp_) {
+        // super nasty hack
+        double angZ = atan2(R(0, 1), R(0, 0));
+        R(0, 0) = cos(angZ);
+        R(1, 1) = cos(angZ);
+        R(0, 1) = sin(angZ);
+        R(1, 0) = -sin(angZ);
+        R(0, 2) = 0.0;
+        R(1, 2) = 0.0;
+        R(2, 0) = 0.0;
+        R(2, 1) = 0.0;
+        R(2, 2) = 1.0;
+    }
     Eigen::Vector3d t = distance_voxel_grid_Mu - R * cloudMu;
     Eigen::Affine3d localTrans = Eigen::Affine3d::Identity();
     localTrans.linear() = R;
@@ -238,15 +269,18 @@ Eigen::Affine3d IcpFitter::computeLocalTransform(const Eigen::Matrix3d & W, cons
     return localTrans;
 }
 
-/* TODO
-   make 2d ICP
-   try 45 deg as second initial guess to prevent 90 deg flipping
-
-   maybe every X steps fix linear = rotation?
-   sort out data types
-   incoming frames: figure this out, probably incoming msg frame, do we have that???
-   cleanup vis code
-   */
+boost::function<double(double)> IcpFitter::buildKernel(const std::string & kernel_type, double kernel_dist)
+{
+  boost::function<double(double)> kernel;
+  if(kernel_type == "huber") {
+      kernel = boost::bind(huberKernel, kernel_dist, _1);
+  } else if(kernel_type == "selection") {
+      kernel = boost::bind(selectionKernel, kernel_dist, _1);
+  } else {
+      ROS_ERROR("Unknown kernel: %s", kernel_type.c_str());
+  }
+  return kernel;
+}
 
 /*! Performs standard iterative closest points (ICP).
  *
@@ -261,28 +295,14 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
         const geometry_msgs::Pose & cloud_pose,
         cv::flann::Index &search, double min_object_score) const
 {
-  if (cloud.empty()) {
+  if(cloud.empty()) {
     //ROS_ERROR("Attempt to fit model to empty point cloud");
     geometry_msgs::Pose bogus_pose;
     return ModelFitInfo(model_id_, bogus_pose, 0.0);
   }
 
-  boost::function<double(double)> inlier_kernel;
-  boost::function<double(double)> outlier_kernel;
-  if(inlier_kernel_ == "huber") {
-      inlier_kernel = boost::bind(huberKernel, inlier_dist_, _1);
-  } else if(inlier_kernel_ == "selection") {
-      inlier_kernel = boost::bind(selectionKernel, inlier_dist_, _1);
-  } else {
-      ROS_ERROR("Unknown kernel: %s", inlier_kernel_.c_str());
-  }
-  if(outlier_kernel_ == "huber") {
-      outlier_kernel = boost::bind(huberKernel, outlier_dist_, _1);
-  } else if(outlier_kernel_ == "selection") {
-      outlier_kernel = boost::bind(selectionKernel, outlier_dist_, _1);
-  } else {
-      ROS_ERROR("Unknown kernel: %s", outlier_kernel_.c_str());
-  }
+  boost::function<double(double)> inlier_kernel = buildKernel(inlier_kernel_, inlier_dist_);
+  boost::function<double(double)> outlier_kernel = buildKernel(outlier_kernel_, outlier_dist_);
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr inputCloud(new pcl::PointCloud<pcl::PointXYZ>());
   for(size_t i = 0; i < cloud.size(); i++) {
@@ -296,7 +316,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   vg.setLeafSize(downsample_leaf_size_, downsample_leaf_size_, downsample_leaf_size_);
   vg.filter(downsampledCloud);
 
-  printf("INPUT: %zu down %zu\n", cloud.size(), downsampledCloud.size());
+  ROS_DEBUG("Downsampled input: from %zu to %zu points.", cloud.size(), downsampledCloud.size());
 
   // transform is the transformation to move the model/distance_voxel_grid to the input point cloud
   // i.e. the resulting pose of the model
@@ -304,31 +324,33 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
   // As we can't transform the distance_voxel_grid_, we transform the input cloud towards the model
   // Thus, transformedCloud is transform^-1 * cloud
   EigenSTL::vector_Vector3d transformedCloud;
-  EigenSTL::vector_Vector3d rawCloud;
   transformedCloud.reserve(downsampledCloud.size());
-  rawCloud.reserve(downsampledCloud.size());
   // use center as initial guess
   cv::Point3f center = centerOfSupport(cloud);
   transform.translation().x() = center.x;
   transform.translation().y() = center.y;
   for(size_t i = 0; i < downsampledCloud.size(); i++) {
-      rawCloud.push_back(Eigen::Vector3d(
-                  downsampledCloud[i].x, downsampledCloud[i].y, downsampledCloud[i].z));
       transformedCloud.push_back(Eigen::Vector3d(
                   downsampledCloud[i].x - center.x, downsampledCloud[i].y - center.y, downsampledCloud[i].z));
   }
 
-  printf("fitPointCloud for model %d\n", model_id_);
-  int iteration = 0;
+  ROS_INFO("fitPointCloud for model %d", model_id_);
   int id = 0;
   double score = 0;
   visualization_msgs::MarkerArray ma;
-  ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform, "icp"));
-  ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity(), "icp_transformed"));
+  if(pubMarker.getNumSubscribers() > 0) {
+      ma.markers.push_back(createMeshMarker(model_id_*100 + id++, cloud_pose, transform, "icp"));
+      ma.markers.push_back(createClusterMarker(transformedCloud, model_id_*100 + id, cloud_pose, "icp_transformed"));
+  }
+  int iteration = 0;
   do {
     Eigen::Vector3d cloudMu;
     Eigen::Vector3d distance_voxel_grid_Mu;
     computeMus(transformedCloud, cloudMu, distance_voxel_grid_Mu, outlier_kernel);
+    if(!use_3d_icp_) {
+        cloudMu.z() = 0;
+        distance_voxel_grid_Mu.z() = 0;
+    }
 
     Eigen::Matrix3d W = computeW(transformedCloud, cloudMu, distance_voxel_grid_Mu, outlier_kernel);
 
@@ -347,21 +369,22 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
     else
         break;
 
-    geometry_msgs::Pose pose;
-    tf::poseEigenToMsg(transform, pose);
-    //ROS_INFO_STREAM(pose);
-    printf("i: %d: ICP score: %f\n", iteration, score);
+    ROS_DEBUG("i: %d: ICP score: %f", iteration, score);
 
-    ma.markers.push_back(createClusterMarker(rawCloud, model_id_*100 + id++, cloud_pose, transform, "icp"));
-    ma.markers.push_back(createClusterMarker(transformedCloud, 42000 + model_id_*100 + id++, cloud_pose, Eigen::Affine3d::Identity(), "icp_transformed"));
+    if(pubMarker.getNumSubscribers() > 0) {
+        ma.markers.push_back(createMeshMarker(model_id_*100 + id++, cloud_pose, transform, "icp"));
+        ma.markers.push_back(createClusterMarker(transformedCloud, model_id_*100 + id, cloud_pose, "icp_transformed"));
+    }
   } while (++iteration < max_iterations_);
 
-  ma.markers.push_back(createClusterMarker(rawCloud, 12345, cloud_pose, transform, "final"));
-  pubMarker.publish(ma);
+  if(pubMarker.getNumSubscribers() > 0) {
+      ma.markers.push_back(createMeshMarker(12345, cloud_pose, transform, "final"));
+      pubMarker.publish(ma);
+  }
 
   geometry_msgs::Pose pose;
   tf::poseEigenToMsg(transform, pose);
-  ROS_INFO_STREAM("Final pose: " << pose);
+  ROS_DEBUG_STREAM("Final pose: " << pose);
 
   // evaluating the model score is cost-intensive and since the model_score <= 1 ->
   // if score already below min_object_score, then set to 0 and stop further evaluation!
@@ -369,7 +392,7 @@ ModelFitInfo IcpFitter::fitPointCloud(const std::vector<cv::Vec3f>& cloud,
     double model_score = getModelFitScore(cloud, transform, inlier_kernel, search, cloud_pose);
     //// since for waterthight model only 50% of the points are visible at max, we weight the model_score only half.
     score *= sqrt(model_score);
-    printf("model_score: %f final score: %f\n", model_score, score);
+    ROS_DEBUG("Model_score: %f Final score: %f", model_score, score);
   } else
       score = 0;
 
@@ -387,7 +410,7 @@ double IcpFitter::getModelFitScore(const std::vector<cv::Vec3f>& cloud,
   std::vector<float> distances(1);
   cv::Mat_<float> points(1, 3);
   EigenSTL::vector_Vector3d model_cloud;
-  printf("model_surface_points_: %zu\n", model_surface_points_.size());
+  ROS_DEBUG("%s: Model_surface_points: %zu", __func__, model_surface_points_.size());
   for (std::vector<cv::Point3f>::const_iterator mIt = model_surface_points_.begin(); mIt != model_surface_points_.end(); ++mIt) {
       Eigen::Vector3d pt(mIt->x, mIt->y, mIt->z);
       Eigen::Vector3d transformedPoint = pose * pt;
@@ -399,9 +422,11 @@ double IcpFitter::getModelFitScore(const std::vector<cv::Vec3f>& cloud,
     search.knnSearch(points, indices, distances, 1);
     inlier_count += kernel(sqrt(distances[0]));
   }
-  visualization_msgs::MarkerArray ma;
-  ma.markers.push_back(createClusterMarker(model_cloud, 12346, cloud_pose, Eigen::Affine3d::Identity(), "model_fit_cloud"));
-  pubMarker.publish(ma);
+  if(pubMarker.getNumSubscribers() > 0) {
+      visualization_msgs::MarkerArray ma;
+      ma.markers.push_back(createClusterMarker(model_cloud, 12346, cloud_pose, "model_fit_cloud"));
+      pubMarker.publish(ma);
+  }
   return inlier_count / model_surface_points_.size();
 }
 

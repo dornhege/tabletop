@@ -61,6 +61,8 @@ class TabletopObjectRecognizer
     ros::Publisher pubMarker_;
     std::string fitter_type_;
 
+    std::string sensor_frame_id_;
+
     double getConfidence (double score) const
     {
       return (1.0 - (1.0 - score) * (1.0 - score));
@@ -82,6 +84,9 @@ class TabletopObjectRecognizer
 
       ros::NodeHandle nhPriv("~");
       nhPriv.param("fitter_type", fitter_type_, std::string("iterative_translation"));
+      if(!nhPriv.getParam("sensor_frame", sensor_frame_id_)) {
+          ROS_ERROR("%s: Could not get parameter for sensor_frame.", __PRETTY_FUNCTION__);
+      }
     }
 
     //! Empty stub
@@ -102,6 +107,8 @@ class TabletopObjectRecognizer
             detector_.addObject<IterativeTranslationFitter>(model_id, mesh);
         else if(fitter_type_ == "icp")
             detector_.addObject<IcpFitter>(model_id, mesh);
+        else if(fitter_type_ == "icp_2d")
+            detector_.addObject<IcpFitter2d>(model_id, mesh);
         else
             ROS_WARN("%s: Unknown fitter type: %s", __PRETTY_FUNCTION__, fitter_type_.c_str());
     }
@@ -119,13 +126,8 @@ class TabletopObjectRecognizer
     visualization_msgs::Marker createClusterMarker(const std::vector<cv::Vec3f> & cluster, int id,
             const geometry_msgs::Pose & cluster_pose)
     {
-        std::string sensor_frame_id;
-        ros::NodeHandle nh("~");
-        nh.param("sensor_frame", sensor_frame_id, std::string(""));
-        ROS_ASSERT(!sensor_frame_id.empty());
-
         visualization_msgs::Marker marker;
-        marker.header.frame_id = sensor_frame_id;
+        marker.header.frame_id = sensor_frame_id_;
         marker.ns = "clusters";
         marker.id = id;
         marker.type = visualization_msgs::Marker::POINTS;

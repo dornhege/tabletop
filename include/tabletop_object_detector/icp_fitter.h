@@ -32,7 +32,7 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  *********************************************************************/
 
-// Author(s): Marius Muja, Matei Ciocarlie and Romain Thibaux
+// Author(s): Christian Dornhege, Marius Muja, Matei Ciocarlie and Romain Thibaux
 
 #ifndef _ICP_FITTER_H_
 #define _ICP_FITTER_H_
@@ -48,6 +48,8 @@ namespace tabletop_object_detector {
 class IcpFitter : public DistanceFieldFitter
 {
  private:
+  std::string sensor_frame_id_;
+
   int min_iterations_;
   int max_iterations_;
   double min_iteration_improvement_;
@@ -78,8 +80,12 @@ class IcpFitter : public DistanceFieldFitter
                           boost::function<double(double)> kernel, cv::flann::Index& search,
                           const geometry_msgs::Pose & cloud_pose) const;
 
-  visualization_msgs::Marker createClusterMarker(const EigenSTL::vector_Vector3d & cluster, int id,
+  visualization_msgs::Marker createMeshMarker(int id,
         const geometry_msgs::Pose & cloud_pose, const Eigen::Affine3d & icp_transform,
+        const std::string & ns) const;
+
+  visualization_msgs::Marker createClusterMarker(const EigenSTL::vector_Vector3d & cluster, int id,
+        const geometry_msgs::Pose & cloud_pose,
         const std::string & ns) const;
 
   double applyTransformAndcomputeScore(EigenSTL::vector_Vector3d & cloud,
@@ -110,10 +116,20 @@ class IcpFitter : public DistanceFieldFitter
           return (clipping / x);
   }
 
+  static boost::function<double(double)> buildKernel(const std::string & kernel_type, double kernel_dist);
+
+ protected:
+  // do normal 3d ICP or restrict to 2d transforms
+  bool use_3d_icp_;
+
  public:
   //! Stub, just calls super's constructor
-  IcpFitter() : DistanceFieldFitter() {
+  IcpFitter() : DistanceFieldFitter(), use_3d_icp_(true) {
     ros::NodeHandle nhPriv("~");
+    if(!nhPriv.getParam("sensor_frame", sensor_frame_id_)) {
+        ROS_WARN("%s: Could not get parameter for sensor_frame.", __PRETTY_FUNCTION__);
+    }
+
     nhPriv.param("min_iterations", min_iterations_, 20);
     nhPriv.param("max_iterations", max_iterations_, 1000);
     nhPriv.param("min_iteration_improvement", min_iteration_improvement_, 0.001);
@@ -135,6 +151,15 @@ class IcpFitter : public DistanceFieldFitter
   //! Main fitting function
   ModelFitInfo fitPointCloud(const std::vector<cv::Vec3f>& cloud, const geometry_msgs::Pose & cloud_pose,
           cv::flann::Index &search, double min_object_score) const;
+};
+
+class IcpFitter2d : public IcpFitter
+{
+    public:
+        IcpFitter2d() : IcpFitter()
+        {
+            use_3d_icp_ = false;
+        }
 };
 
 } //namespace
