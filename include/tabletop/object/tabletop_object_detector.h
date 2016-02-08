@@ -119,8 +119,13 @@ class TabletopObjectRecognizer
     visualization_msgs::Marker createClusterMarker(const std::vector<cv::Vec3f> & cluster, int id,
             const geometry_msgs::Pose & cluster_pose)
     {
+        std::string sensor_frame_id;
+        ros::NodeHandle nh("~");
+        nh.param("sensor_frame", sensor_frame_id, std::string(""));
+        ROS_ASSERT(!sensor_frame_id.empty());
+
         visualization_msgs::Marker marker;
-        marker.header.frame_id = "head_mount_kinect_rgb_optical_frame"; // TODO figure this out, probably incoming msg frame, do we have that???
+        marker.header.frame_id = sensor_frame_id;
         marker.ns = "clusters";
         marker.id = id;
         marker.type = visualization_msgs::Marker::POINTS;

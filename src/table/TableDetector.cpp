@@ -109,7 +109,11 @@ namespace tabletop
       nh.param("min_table_height", min_table_height_, 0.5);
       nh.param("max_table_height", max_table_height_, 1.0);
       nh.param("robot_frame", robot_frame_id_, std::string("/base_link"));
-      nh.param("sensor_frame", sensor_frame_id_, std::string("/head_mount_kinect_rgb_optical_frame"));
+      nh.param("sensor_frame", sensor_frame_id_, std::string(""));
+      if(sensor_frame_id_.empty()) {
+          ROS_ERROR("TableDetector ~sensor_frame is empty.");
+      }
+      ROS_ASSERT(!sensor_frame_id_.empty());
 
       double max_angle_diff;
       double table_normal_x;

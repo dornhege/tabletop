@@ -93,7 +93,13 @@ visualization_msgs::Marker IcpFitter::createClusterMarker(const EigenSTL::vector
         marker.scale.z = 1.0;
         shape_tools::constructMarkerFromShape(mesh_, marker); // assumes this was initialized from mesh
     }
-    marker.header.frame_id = "head_mount_kinect_rgb_optical_frame";
+
+    std::string sensor_frame_id;
+    ros::NodeHandle nh("~");
+    nh.param("sensor_frame", sensor_frame_id, std::string(""));
+    ROS_ASSERT(!sensor_frame_id.empty());
+
+    marker.header.frame_id = sensor_frame_id;
     marker.id = id;
     marker.ns = ns;
     marker.action = visualization_msgs::Marker::ADD;
