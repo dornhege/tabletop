@@ -85,7 +85,7 @@ class TabletopObjectRecognizer
       ros::NodeHandle nhPriv("~");
       nhPriv.param("fitter_type", fitter_type_, std::string("iterative_translation"));
       if(!nhPriv.getParam("sensor_frame", sensor_frame_id_)) {
-          ROS_WARN("%s: Could not get parameter for sensor_frame.", __PRETTY_FUNCTION__);
+          ROS_ERROR("%s: Could not get parameter for sensor_frame.", __PRETTY_FUNCTION__);
       }
     }
 

@@ -114,6 +114,7 @@ namespace tabletop
       if(!nh.getParam("sensor_frame", sensor_frame_id_)) {
           ROS_ERROR("%s: Could not get param for sensor_frame!", __PRETTY_FUNCTION__);
       }
+      ROS_ASSERT(!sensor_frame_id_.empty());
 
       double max_angle_diff;
       double table_normal_x;
