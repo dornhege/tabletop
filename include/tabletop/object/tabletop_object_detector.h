@@ -42,6 +42,7 @@
 #include <tabletop_object_detector/iterative_distance_fitter.h>
 
 #include <string>
+#include <future>
 
 #include <opencv2/flann/flann.hpp>
 
@@ -64,7 +65,7 @@ class TabletopObjectRecognizer
     //! Subscribes to and advertises topics; initializes fitter
     TabletopObjectRecognizer()
     {
-      detector_ = ExhaustiveFitDetector<IterativeTranslationFitter>();
+     //XXX not needed, I think    detector_ = ExhaustiveFitDetector<IterativeTranslationFitter>();
       //initialize operational flags
       fit_merge_threshold_ = 0.02;
     }
@@ -98,16 +99,19 @@ class TabletopObjectRecognizer
 
     /*! Performs the detection on each of the clusters, and populates the returned message.
      */
+
     void
     objectDetection(std::vector<std::vector<cv::Vec3f> > &clusters, float confidence_cutoff,
                     bool perform_fit_merge, std::vector<TabletopResult > &results)
     {
       //do the model fitting part
       std::vector<size_t> cluster_model_indices;
-      std::vector<std::vector<ModelFitInfo> > raw_fit_results(clusters.size());
+      std::vector<std::vector<ModelFitInfo>> raw_fit_results(clusters.size());
+      std::vector<std::future<std::vector<ModelFitInfo>>> future_results(clusters.size());
       std::vector<cv::flann::Index> search(clusters.size());
       cluster_model_indices.resize(clusters.size(), -1);
       int num_models = 1;
+
       for (size_t i = 0; i < clusters.size(); i++)
       {
         cluster_model_indices[i] = i;
@@ -119,7 +123,15 @@ class TabletopObjectRecognizer
         search[i].build(features, cv::flann::KDTreeIndexParams());
 #endif
 
-        raw_fit_results[i] = detector_.fitBestModels(clusters[i], std::max(1, num_models), search[i], confidence_cutoff);
+        future_results[i] =
+            std::async(std::launch::async,
+                       &ExhaustiveFitDetector<IterativeTranslationFitter>::fitBestModels, &detector_,
+                       std::ref(clusters[i]), std::max(1, num_models), std::ref(search[i]), confidence_cutoff);
+      }
+
+      for (size_t i = 0; i < clusters.size(); i++)
+      {
+        raw_fit_results[i] = future_results[i].get();
       }
 
       //merge models that were fit very close to each other
