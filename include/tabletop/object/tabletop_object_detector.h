@@ -43,6 +43,7 @@
 #include <tabletop_object_detector/icp_fitter.h>
 
 #include <string>
+#include <future>
 
 #include <opencv2/flann/flann.hpp>
 #include <visualization_msgs/MarkerArray.h>
@@ -76,6 +77,7 @@ class TabletopObjectRecognizer
     TabletopObjectRecognizer()
     {
       detector_ = ExhaustiveFitDetector();
+
       //initialize operational flags
       fit_merge_threshold_ = 0.02;
 
@@ -150,8 +152,7 @@ class TabletopObjectRecognizer
         return marker;
     }
 
-    /*! Performs the detection on each of the clusters, and populates the returned message.
-     */
+    //! Performs the detection on each of the clusters, and populates the returned message.
     void
     objectDetection(std::vector<std::vector<cv::Vec3f> > &clusters,
             const std::vector<geometry_msgs::Pose> & cluster_poses,
@@ -160,19 +161,35 @@ class TabletopObjectRecognizer
     {
       //do the model fitting part
       std::vector<size_t> cluster_model_indices;
-      std::vector<std::vector<ModelFitInfo> > raw_fit_results(clusters.size());
+      std::vector<std::vector<ModelFitInfo>> raw_fit_results(clusters.size());
+      std::vector<std::future<std::vector<ModelFitInfo>>> future_results(clusters.size());
       std::vector<cv::flann::Index> search(clusters.size());
       cluster_model_indices.resize(clusters.size(), -1);
       int num_models = 1;
+
       visualization_msgs::MarkerArray ma;
+
       for (size_t i = 0; i < clusters.size(); i++)
       {
         cluster_model_indices[i] = i;
         cv::Mat features = cv::Mat(clusters[i]).reshape(1);
+#if CV_VERSION_MAJOR == 2 && CV_VERSION_MINOR == 4 && CV_VERSION_REVISION >= 12
+        // That compiles but seems to crash on other versions
+        search[i] = cv::flann::Index(features, cv::flann::KDTreeIndexParams());
+#else
         search[i].build(features, cv::flann::KDTreeIndexParams());
+#endif
 
-        raw_fit_results[i] = detector_.fitBestModels(clusters[i], cluster_poses[i],
-                std::max(1, num_models), search[i], getScore(confidence_cutoff));
+        future_results[i] =
+            std::async(std::launch::async,
+                       &ExhaustiveFitDetector::fitBestModels, &detector_,
+                       std::ref(clusters[i]), std::ref(cluster_poses[i]),
+                       std::max(1, num_models), std::ref(search[i]), getScore(confidence_cutoff));
+      }
+
+      for (size_t i = 0; i < clusters.size(); i++)
+      {
+        raw_fit_results[i] = future_results[i].get();
         ma.markers.push_back(createClusterMarker(clusters[i], i, cluster_poses[i]));
       }
       pubMarker_.publish(ma);

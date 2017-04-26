@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 2.8)
 project(object_recognition_tabletop)
 
+set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
+
 find_package(catkin REQUIRED ecto cmake_modules
                              moveit_core object_recognition_core object_recognition_msgs opencv_candidate
-                             pluginlib rosconsole roscpp shape_msgs shape_tools tf)
+                             pluginlib rosconsole roscpp shape_msgs geometric_shapes tf)
 catkin_package()
 
 # deal with Python
