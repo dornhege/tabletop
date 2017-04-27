@@ -292,20 +292,20 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
         cv::Matx33f Rinv = rotations[table_index].t();
         cv::Vec3f Tinv = -Rinv*translations[table_index];
 
-      BOOST_FOREACH(const std::vector<cv::Vec3f>& cluster, (*clusters_)[table_index]) {
-        clusters_merged.resize(clusters_merged.size() + 1);
-        cluster_poses.resize(cluster_poses.size() + 1);
-        geometry_msgs::Pose poseMsg;
-        Eigen::Affine3d pose = poseCvToEigen(translations[table_index], rotations[table_index]);
-        tf::poseEigenToMsg(pose, poseMsg);
-        cluster_poses.back() = poseMsg;
-        for (size_t i = 0; i < cluster.size(); ++i) {
-          cv::Vec3f res = Rinv * cluster[i] + Tinv;
-          clusters_merged.back().push_back(cv::Vec3f(res[0], res[1], res[2]));
+        BOOST_FOREACH(const std::vector<cv::Vec3f>& cluster, (*clusters_)[table_index]) {
+          clusters_merged.resize(clusters_merged.size() + 1);
+          cluster_poses.resize(cluster_poses.size() + 1);
+          geometry_msgs::Pose poseMsg;
+          Eigen::Affine3d pose = poseCvToEigen(translations[table_index], rotations[table_index]);
+          tf::poseEigenToMsg(pose, poseMsg);
+          cluster_poses.back() = poseMsg;
+          for (size_t i = 0; i < cluster.size(); ++i) {
+            cv::Vec3f res = Rinv * cluster[i] + Tinv;
+            clusters_merged.back().push_back(cv::Vec3f(res[0], res[1], res[2]));
+          }
+          cluster_table.push_back(table_index);
         }
-        cluster_table.push_back(table_index);
       }
-    }
 
       // Find possible candidates
       object_recognizer_.objectDetection(clusters_merged, cluster_poses, confidence_cutoff_, perform_fit_merge_, results);
@@ -354,18 +354,18 @@ struct ObjectRecognizer : public object_recognition_core::db::bases::ModelReader
         ros_clouds[0].reset(new sensor_msgs::PointCloud2());
         sensor_msgs::PointCloud2Proxy<sensor_msgs::PointXYZ> proxy(*(ros_clouds[0]));
 
-      cv::Matx33f Rot = rotations[table_index];
-      cv::Vec3f Tra = translations[table_index];
-      // Add the cloud
-      proxy.resize(result.cloud_.size());
-      sensor_msgs::PointXYZ *iter = &(proxy[0]);
-      for(size_t i = 0; i < result.cloud_.size(); ++i, ++iter) {
-        //Transform the object points back to their original frame
-        cv::Vec3f res = Rot * result.cloud_[i] + Tra;
-        iter->x = res[0];
-        iter->y = res[1];
-        iter->z = res[2];
-      }
+        cv::Matx33f Rot = rotations[table_index];
+        cv::Vec3f Tra = translations[table_index];
+        // Add the cloud
+        proxy.resize(result.cloud_.size());
+        sensor_msgs::PointXYZ *iter = &(proxy[0]);
+        for(size_t i = 0; i < result.cloud_.size(); ++i, ++iter) {
+          //Transform the object points back to their original frame
+          cv::Vec3f res = Rot * result.cloud_[i] + Tra;
+          iter->x = res[0];
+          iter->y = res[1];
+          iter->z = res[2];
+        }
 
         pose_result.set_clouds(ros_clouds);
 

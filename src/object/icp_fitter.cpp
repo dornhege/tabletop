@@ -41,7 +41,7 @@
 #include <Eigen/Core>
 #include <Eigen/SVD>
 #include <eigen_conversions/eigen_msg.h>
-#include <shape_tools/shape_to_marker.h>
+#include <geometric_shapes/shape_to_marker.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
 
@@ -82,7 +82,7 @@ visualization_msgs::Marker IcpFitter::createMeshMarker(int id,
     marker.scale.x = 1.0;
     marker.scale.y = 1.0;
     marker.scale.z = 1.0;
-    shape_tools::constructMarkerFromShape(mesh_, marker); // assumes this was initialized from mesh
+    geometric_shapes::constructMarkerFromShape(mesh_, marker); // assumes this was initialized from mesh
     marker.header.frame_id = sensor_frame_id_;
     marker.id = id;
     marker.ns = ns;
